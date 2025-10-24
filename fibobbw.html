@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>تحلیل زنده و فیبوناچی</title>
+<title>تحلیل زنده و فیبوناچی (با هشدار کراس باند میانی)</title>
 <style>
 body { background:#111; color:#eee; font-family:sans-serif; padding:12px; text-align:center; }
 h1,h2 { color:#00ff99; margin-bottom:10px; font-size:12px;}
@@ -21,6 +21,7 @@ th { background:#1c1c1c; color:#0ff; font-weight:bold; }
 .rsi { color:#ab47bc; }
 .cci { color:#089981; }
 .roc { color:#2962FF; }
+.ema7 { color:#2962FF; }
 .bollUpper, .bollMid, .bollLower { color:#dbdbdb; }
 
 table tbody td:nth-child(odd):not(:first-child) { background-color: #3b3b3b; }
@@ -30,11 +31,26 @@ a.tv { color:#0ff; text-decoration:none; }
 select, button { background: #222; color: white; border: 1px solid #555; border-radius:6px; padding:6px; margin:4px; cursor:pointer;}
 button { background:#0078ff; border:none; }
 button:hover { background:#005ad1; }
+
+/* استایل جدید برای دکمه‌های تایم‌فریم فیبوناچی */
+.fibo-tf-selector button {
+    background: #2a2a2a;
+    color: #0ff;
+    border: 1px solid #0ff;
+    margin: 4px 6px;
+    padding: 8px 10px;
+}
+.fibo-tf-selector button.active {
+    background: #0078ff;
+    color: white;
+    border-color: #0078ff;
+}
 </style>
 </head>
 <body>
 
 <h1>تحلیل زنده چند تایم‌فریم + فیبوناچی</h1>
+
 <!-- لینک برگشت به صفحه اصلی -->
 <div id="homeLink" style="margin: 20px; text-align: center;">
   <a href="index.html" 
@@ -42,7 +58,11 @@ button:hover { background:#005ad1; }
 برگشت به صفحه اصلی
 </a>
 </div>
-  
+
+<p id="crossoverStatus" style="margin-top:15px; font-weight:bold; font-size:14px;">
+    ✅ در حال نظارت بر کراس باند میانی بولینگر.
+</p>
+
 <label for="symbolSelect">انتخاب ارز:</label>
 <select id="symbolSelect">
   <option selected>BLUMUSDT</option>
@@ -63,7 +83,6 @@ button:hover { background:#005ad1; }
   <option>TONUSDT</option>
 </select>
 
-<!-- جدول اندیکاتورها -->
 <div class="table-container">
 <table>
 <thead>
@@ -82,21 +101,15 @@ button:hover { background:#005ad1; }
 </table>
 </div>
 
-<!-- جدول فیبوناچی -->
 <h2>فیبوناچی</h2>
-<div>
-<label>تایم‌فریم فیبوناچی:</label>
-<select id="tfFibo">
-  <option value="60m">1 ساعته</option>
-  <option value="4h" selected>4 ساعته</option>
-  <option value="1d">روزانه</option>
-</select>
-<button onclick="updateFibo()">بروزرسانی دستی</button>
+
+<div class="fibo-tf-selector" id="fiboTfSelector">
+  <button data-tf="60m" data-limit="144">1 ساعته (144)</button>
+  <button data-tf="4h" data-limit="144" class="active">4 ساعته (144)</button>
+  <button data-tf="1d" data-limit="200">روزانه (200)</button>
 </div>
+
 <p id="statusFibo">در حال دریافت داده‌ها...</p>
-<div id="infoFibo">
-  <p class="info" id="fiboLength">📏 طول دوره: -</p>
-</div>
 
 <table id="fiboTable">
 <thead>
@@ -109,10 +122,104 @@ button:hover { background:#005ad1; }
 //================ جدول اول (HA + اندیکاتورها) =================
 const intervals = ["60m","4h","8h","1d","1W"];
 let currentSymbol = document.getElementById('symbolSelect').value;
+// متغیر جدید برای نگهداری تایم فریم فیبوناچی انتخاب شده
+let currentFiboTF = '4h'; // مقدار پیش‌فرض
+
+// === ابزارهای هشدار جدید ===
+let isCrossoverActive = false;
+// آدرس یک فایل صوتی که هنگام هشدار پخش می‌شود
+const alertSound = new Audio('https://s3.tradingview.com/static/notify/notification.mp3');
+
+// 1. درخواست مجوز اعلان‌ها
+function requestNotificationPermission() {
+    if ('Notification' in window) {
+        if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+            Notification.requestPermission();
+        }
+    }
+}
+
+// 2. هشدار صوتی
+function playAudio() {
+    try {
+        alertSound.currentTime = 0; 
+        alertSound.play().catch(e => console.error("Audio playback restricted:", e));
+    } catch(e) {
+        console.error("Audio playback failed:", e);
+    }
+}
+
+// 3. لرزش (ویبره)
+function vibrateDevice() {
+    if ('vibrate' in navigator) {
+        // الگوی لرزش: ۲۰۰ میلی‌ثانیه روشن، ۱۰۰ خاموش، ۲۰۰ روشن
+        navigator.vibrate([200, 100, 200]);
+    }
+}
+
+// 4. اعلان دسکتاپ (نوتیفیکیشن)
+function sendDesktopNotification(title, body) {
+    if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, { 
+            body: body, 
+            icon: 'https://www.google.com/s2/favicons?domain=tradingview.com',
+            vibrate: [200, 100, 200]
+        });
+    }
+}
+
+// 5. بررسی کراس باند میانی و اجرای هشدارها
+function checkForBollingerCrossoverAlert(currentClose, prevClose, midBand, interval) {
+    let alertMessage = null;
+    const title = `${currentSymbol} ${interval} - هشدار کراس باند میانی`;
+
+    // 1. کراس به سمت بالا (صعودی): کلوز قبلی زیر باند میانی بود و کلوز فعلی بالای آن است
+    const bullishCrossover = (prevClose < midBand) && (currentClose > midBand);
+    
+    // 2. کراس به سمت پایین (نزولی): کلوز قبلی بالای باند میانی بود و کلوز فعلی زیر آن است
+    const bearishCrossover = (prevClose > midBand) && (currentClose < midBand);
+
+    if (midBand === null) return; // اگر باند میانی محاسبه نشده باشد، ادامه نده
+
+    if (bullishCrossover) {
+        alertMessage = `⬆️ کراس صعودی: کندل به بالای باند میانی (${midBand.toFixed(5)}) بسته شد.`;
+    } else if (bearishCrossover) {
+        alertMessage = `⬇️ کراس نزولی: کندل به زیر باند میانی (${midBand.toFixed(5)}) بسته شد.`;
+    }
+
+    // اگر شرط هشدار برقرار بود و هشدار فعال دیگری نداشتیم
+    if (alertMessage && !isCrossoverActive) {
+        isCrossoverActive = true;
+        
+        // --- اجرای همه هشدارها ---
+        playAudio();
+        vibrateDevice();
+        sendDesktopNotification(title, alertMessage);
+
+        // هشدار بصری روی صفحه
+        const statusEl = document.getElementById('crossoverStatus');
+        if (statusEl) {
+            statusEl.innerHTML = `🚨 **ALERT:** ${alertMessage} 🚨`;
+            statusEl.classList.add(bullishCrossover ? 'buy' : 'sell'); // سبز برای صعودی، قرمز برای نزولی
+        }
+        
+        // پس از ۶۰ ثانیه، وضعیت هشدار را ریست می‌کنیم تا هشدارهای جدید فعال شوند
+        setTimeout(() => {
+            isCrossoverActive = false;
+            if (statusEl) {
+                statusEl.textContent = '✅ در حال نظارت بر کراس باند میانی بولینگر.';
+                statusEl.classList.remove('buy', 'sell');
+            }
+        }, 60000); 
+    }
+}
+// === پایان ابزارهای هشدار جدید ===
+
 
 async function fetchPrices(symbol, interval="60m"){
   try{
-    const url=`https://api.mexc.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=15`;
+    // برای محاسبه کراس به دو کندل آخر نیاز داریم، پس limit را حداقل روی 15 می‌گذاریم
+    const url=`https://api.mexc.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=200`; 
     const proxy="https://corsproxy.io/?";
     const res=await fetch(proxy+encodeURIComponent(url));
     const data=await res.json();
@@ -133,6 +240,18 @@ function convertHA(data){
     }
   }
   return ha;
+}
+
+function calculateEMAArray(values, period){
+  if(!values||values.length<period) return Array(values?values.length:0).fill(null);
+  const k=2/(period+1), out=[]; let sum=0;
+  for(let i=0;i<values.length;i++){
+    const v=values[i];
+    if(i<period-1){ out.push(null); sum+=v||0; continue; }
+    if(i===period-1){ sum+=v||0; out.push(sum/period); continue; }
+    const prev=out[i-1]; const val=v==null?prev:v; out.push(val*k + prev*(1-k));
+  }
+  return out;
 }
 
 function calculateMA(values, period){
@@ -206,33 +325,41 @@ async function getSymbolData(symbol, interval){
   const raw = await fetchPrices(symbol, interval);
   if(!raw||raw.length===0) return null;
   const ha=convertHA(raw);
-  const price=raw[raw.length-1].close;
+  
+  // کلوز کندل فعلی و کندل قبلی را از داده خام استخراج می‌کنیم
+  const price=raw.at(-1)?.close;
+  const prevClose=raw.at(-2)?.close;
+  
+  const ema7 = raw.length >= 7 ? calculateEMAArray(raw.map(d=>d.close),7) : Array(raw.length).fill(null);
+
   const boll=ha.length>=14?calculateBollinger(ha):{upper:Array(ha.length).fill(null), mid:Array(ha.length).fill(null), lower:Array(ha.length).fill(null)};
   const rsi=ha.length>=14?calculateRSI(ha):Array(ha.length).fill(null);
   const rsiMA=rsi.length>=14?calculateMA(rsi,14):Array(rsi.length).fill(null);
   const cci=ha.length>=14?calculateCCI(ha):Array(ha.length).fill(null);
   const cciMA=cci.length>=14?calculateMA(cci,14):Array(cci.length).fill(null);
   const roc=ha.length>=9?calculateROC(ha,9):Array(ha.length).fill(null);
-  const rocMA=roc.length>=5?calculateMA(roc,5):Array(roc.length).fill(null);
+  const rocMA=roc.length>=5?calculateMA(roc,5):Array(ha.length).fill(null);
   const prevcci=cci.length>=2?cci.at(-2):null;
   const latest={
     bollUpper:boll.upper.at(-1), bollMid:boll.mid.at(-1), bollLower:boll.lower.at(-1),
     rsi:rsi.at(-1), rsiMA:rsiMA.at(-1),
     cci:cci.at(-1), cciMA:cciMA.at(-1),
-    roc:roc.at(-1), rocMA:rocMA.at(-1)
+    roc:roc.at(-1), rocMA:rocMA.at(-1),
+    ema7: ema7.at(-1)
   };
   let buy=false, sell=false;
   if([price, latest.bollMid, latest.rsi, latest.rsiMA, latest.cci].every(v=>v!=null)){
     buy=price>latest.bollMid && latest.rsi>latest.rsiMA && prevcci<0 && latest.cci>0;
     sell=price<latest.bollMid && latest.rsi<latest.rsiMA && prevcci>0 && latest.cci<0;
   }
-  return {...latest, symbol, price, buySignal:buy, sellSignal:sell};
+  // اضافه کردن prevClose برای استفاده در هشدار
+  return {...latest, symbol, price, prevClose, buySignal:buy, sellSignal:sell}; 
 }
 
 function buildReversedTable(){
   const tbody=document.getElementById('tableBody');
   tbody.innerHTML='';
-  const indicators=["price","bollMid","bollUpper","bollLower","rsi","rsiMA","cci","cciMA","roc","rocMA","signal","tv"];
+  const indicators=["price","ema7","bollMid","bollUpper","bollLower","rsi","rsiMA","cci","cciMA","roc","rocMA","signal","tv"];
   for(const ind of indicators){
     const tr=document.createElement('tr');
     tr.id=`row_${ind}`;
@@ -245,8 +372,18 @@ async function updateReversedTable(){
   for(const interval of intervals){
     const data=await getSymbolData(currentSymbol, interval);
     if(!data) continue;
+    
+    // --- اجرای بررسی هشدار کراس باند میانی برای تایم‌فریم‌های ۱ و ۴ ساعته ---
+    if(interval === '60m' || interval === '4h') { 
+        if (data.price && data.prevClose && data.bollMid) {
+             checkForBollingerCrossoverAlert(data.price, data.prevClose, data.bollMid, interval);
+        }
+    }
+    // ----------------------------------
+    
     const mapData={
       price:data.price?.toFixed(5)??'—',
+      ema7: `${data.ema7?.toFixed(5) ?? '—'} ${getTickHtml(data.price>data.ema7)}`,
       bollMid:`${data.bollMid?.toFixed(5)??'—'} ${getTickHtml(data.price>data.bollMid)}`,
       bollUpper:data.bollUpper?.toFixed(5)??'—',
       bollLower:data.bollLower?.toFixed(5)??'—',
@@ -273,8 +410,16 @@ document.getElementById('symbolSelect').addEventListener('change', e=>{
   updateFibo();
 });
 
-buildReversedTable();
-updateReversedTable();
+// === اجرای اولیه و درخواست مجوز اعلان‌ها ===
+document.addEventListener('DOMContentLoaded', () => {
+    requestNotificationPermission();
+
+    buildReversedTable();
+    updateReversedTable();
+    updateFibo();
+});
+
+// به‌روزرسانی خودکار
 setInterval(updateReversedTable,30000);
 
 //================ جدول فیبوناچی =================
@@ -299,14 +444,17 @@ function createFiboTable(){
 }
 
 async function updateFibo(){
-  const tf=document.getElementById("tfFibo").value;
+  const tf = currentFiboTF; // استفاده از متغیر سراسری
   const symbol=document.getElementById("symbolSelect").value;
   let limit=144;
-  if(tf==="1d") limit=200;
-  document.getElementById("fiboLength").textContent=`📏 طول دوره: ${limit}`;
+  if(tf==="1d") limit=144;
+  
+  // به‌روزرسانی نمایش طول دوره
+  
   const proxy="https://corsproxy.io/?";
   const url=`https://api.mexc.com/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=${limit}`;
   document.getElementById("statusFibo").textContent="⏳ در حال دریافت داده‌ها...";
+  
   try{
     const res=await fetch(proxy+encodeURIComponent(url));
     const data=await res.json();
@@ -335,9 +483,31 @@ async function updateFibo(){
   }
 }
 
+// === منطق جدید برای دکمه‌های انتخاب تایم‌فریم فیبوناچی ===
+const fiboTfSelector = document.getElementById('fiboTfSelector');
+
+fiboTfSelector.addEventListener('click', (e) => {
+    if (e.target.tagName === 'BUTTON') {
+        const newTf = e.target.getAttribute('data-tf');
+        
+        // حذف کلاس active از همه دکمه‌ها
+        fiboTfSelector.querySelectorAll('button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        // افزودن کلاس active به دکمه کلیک شده
+        e.target.classList.add('active');
+        
+        // به‌روزرسانی متغیر سراسری و اجرای محاسبه
+        currentFiboTF = newTf;
+        updateFibo();
+    }
+});
+// === پایان منطق جدید ===
+
+
 createFiboTable();
-updateFibo();
-setInterval(updateFibo,30000);
+setInterval(updateFibo,30000); // به روزرسانی خودکار فیبوناچی
 </script>
 </body>
 </html>
