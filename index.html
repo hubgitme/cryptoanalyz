@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>تحلیل</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    /* تنظیمات عمومی */
+    :root {
+      /* تعریف اندازه پایه برای استفاده راحت تر از rem */
+      font-size: 16px; /* اندازه پایه موبایل */
+    }
+
+    body {
+      font-family: 'Vazir', sans-serif;
+      background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+      color: #eee;
+      margin: 0;
+      padding: 1.25rem; /* 20px */
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-sizing: border-box; /* برای محاسبه درست ابعاد */
+    }
+
+    h2 {
+      font-size: 1.5rem; /* بزرگتر شدن اندازه برای خوانایی بهتر */
+      margin-bottom: 1.25rem; /* 20px */
+      color: #ffd369;
+      text-shadow: 1px 1px 5px #000;
+      text-align: center; /* اطمینان از وسط چین بودن */
+    }
+
+    .container {
+      width: 100%;
+      max-width: 90%; /* محدودیت بیشتری برای موبایل */
+      display: flex;
+      flex-direction: column;
+      gap: 1rem; /* 16px */
+      padding: 0;
+    }
+
+    a {
+      display: block;
+      padding: 1rem; /* 16px */
+      text-align: center;
+      background: #00b894;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 0.75rem; /* 12px */
+      font-size: 1rem; /* اندازه مناسب برای موبایل */
+      font-weight: bold;
+      box-shadow: 0 0.25rem 0.75rem rgba(0,0,0,0.3); /* 0 4px 12px */
+      transition: all 0.3s ease;
+    }
+
+    a:hover {
+      background: #fd7e14;
+      transform: translateY(-0.25rem) scale(1.01); /* حرکت ملایم‌تر */
+      box-shadow: 0 0.375rem 1rem rgba(0,0,0,0.4); /* 0 6px 16px */
+    }
+
+    footer {
+      margin-top: auto;
+      padding-top: 1.25rem; /* فاصله از آخرین لینک */
+      font-size: 0.8rem;
+      color: #aaa;
+      text-align: center;
+    }
+    
+    /* تنظیمات برای دسکتاپ و تبلت‌های بزرگتر */
+    @media (min-width: 600px) {
+        :root {
+            font-size: 17px; /* کمی بزرگتر شدن فونت پایه برای دسکتاپ */
+        }
+        
+        .container {
+            max-width: 500px; /* محدود کردن عرض برای ظاهر بهتر در دسکتاپ */
+        }
+        
+        h2 {
+            font-size: 1.8rem; /* بزرگتر شدن عنوان */
+        }
+        
+        a {
+            font-size: 1.15rem; /* بزرگتر شدن متن لینک‌ها */
+            padding: 1.2rem;
+        }
+
+        footer {
+            font-size: 0.9rem;
+        }
+    }
+
+    /* تنظیمات برای دسکتاپ‌های بزرگ */
+    @media (min-width: 1024px) {
+        .container {
+            max-width: 600px; /* فضای بیشتر برای نمایشگرهای بزرگ */
+        }
+    }
+  </style>
+</head>
+<body>
+  <h2>📊 لیست صفحات تحلیل</h2>
+
+  <div class="container">
+    <a href="ashi.html">🔥 تحلیل زنده هیکین آشی</a>
+    <a href="candle.html">📈 تحلیل زنده کندل</a>
+    <a href="ashitabletfvert.html">🔥 تحلیل زنده هیکین آشی جدولی</a>
+    <a href="ashitabletf.html">🔥 تحلیل زنده هیکین آشی جدولی تایم فریم</a>
+    <a href="ashitabletf5.html">🔥 تحلیل زنده هیکین آشی جدولی تایم فریم 5 ارز</a>
+    <a href="\pages\fibobbw.html"> فیبوناچی و  بولینگ بند هفتگی</a>
+    <a href="\pages\500crypto\Main.html"> سیگنال صد ارز </a>
+    <a href="\pages\AccountingCur.html">دفتر حساب</a>
+  </div>
+
+  <footer>
+    طراحی شده برای همه دستگاه‌ها 💻📱
+  </footer>
+</body>
+</html>

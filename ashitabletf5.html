@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>تحلیل چند تایم‌فریم - Heikin Ashi</title>
+<style>
+body { background:#111; color:#eee; font-family:sans-serif; padding:12px; text-align:center; }
+h1 { color:#00ff99; font-size:18px; margin:20px 0; }
+h2 { color:#0ff; font-size:16px; margin:15px 0; }
+.table-container { overflow-x:auto; margin:10px auto; max-width:95%; }
+table { width:100%; border-collapse:collapse; min-width:1200px; font-size:12px; margin-bottom:30px; }
+th, td { border:1px solid #333; padding:6px 4px; text-align:center; white-space:nowrap; }
+th { background:#1c1c1c; color:#0ff; font-weight:bold; }
+.buy { color:#0f0; font-weight:bold; }
+.sell { color:#f33; font-weight:bold; }
+.neutral { color:#ccc; font-weight:bold; }
+.tick.green { color:#0f0; font-weight:bold; }
+.tick.red { color:#f33; font-weight:bold; }
+.ema20 { color:#0ff; }
+.ema50 { color:#33ffcc; }
+.ema100 { color:#66ff66; }
+.ma200 { color:#ff9900; }
+.rsi { color:#ab47bc; }
+.cci { color:#089981; }
+.roc { color:#2962FF; }
+.macd { color:#2962FF; }
+.macdSignal { color:#FF6D00; }
+.macdHist { color:#ff00ff; }
+.tenkan { color:#2962ff; }
+.kijun { color:#b71c1c; }
+.senkouA { color:#a5d6a7; }
+.senkouB { color:#ef9a9a; }
+.chikou { color:#ffa726; }
+.bollingerUpper { color:#ffeb3b; }
+.bollingerMiddle { color:#ffc107; }
+.bollingerLower { color:#ff9800; }
+tbody tr:nth-child(odd) { background-color: #3b3b3b; }
+tbody tr:nth-child(even) { background-color: #2a2a2a; }
+a.tv { color:#0ff; text-decoration:none; }
+</style>
+</head>
+<body>
+<h1>تحلیل زنده چند تایم‌فریم - Heikin Ashi (۵ ارز ثابت)</h1>
+
+<div id="tables"></div>
+
+<script>
+/* ===== پیکربندی ===== */
+const coins = [
+  { symbol: "BLUMUSDT", name: "بلوم" },
+    { symbol: "PENGUUSDT", name: "پنگو" },
+  { symbol: "BTCUSDT", name: "بیت‌کوین" },
+  { symbol: "ETHUSDT", name: "اتریوم" },
+  { symbol: "SUIUSDT", name: "سویی" },
+  { symbol: "XRPUSDT", name: "ریپل" }
+];
+
+const timeframes = [
+  { interval: "30m", label: "۳۰ دقیقه" },
+  { interval: "60m",  label: "۱ ساعت" },
+  { interval: "4h",  label: "۴ ساعت" },
+  { interval: "1d",  label: "۱ روزه" }
+];
+
+/* ===== توابع اندیکاتور (بدون وابستگی خارجی) ===== */
+function calculateEMAArray(values, period){
+  if(!values || values.length===0) return [];
+  const out = [];
+  const k = 2/(period+1);
+  let prev = null;
+  for(let i=0;i<values.length;i++){
+    const v = values[i];
+    if(i < period-1){
+      out.push(null);
+      continue;
+    }
+    if(i === period-1){
+      const sum = values.slice(0,period).reduce((a,b)=>a+(b||0),0);
+      prev = sum/period;
+      out.push(prev);
+      continue;
+    }
+    const val = (v==null) ? prev : (v*k + prev*(1-k));
+    out.push(val);
+    prev = val;
+  }
+  return out;
+}
+
+function calculateMA(values, period){
+  if(!values || values.length===0) return Array(values?values.length:0).fill(null);
+  const out = [];
+  for(let i=0;i<values.length;i++){
+    if(i < period-1 || values[i]==null){ out.push(null); continue; }
+    const slice = values.slice(i-period+1, i+1).filter(v=>v!=null);
+    const avg = slice.reduce((a,b)=>a+b,0)/slice.length;
+    out.push(avg);
+  }
+  return out;
+}
+
+function calculateRSIFromCloses(closes, period=14){
+  const rsi = Array(closes.length).fill(null);
+  if(!closes || closes.length <= period) return rsi;
+  let gains = 0, losses = 0;
+  for(let i=1;i<=period;i++){
+    const diff = closes[i] - closes[i-1];
+    if(diff>=0) gains += diff; else losses -= diff;
+  }
+  let avgGain = gains/period, avgLoss = losses/period;
+  rsi[period] = avgLoss === 0 ? 100 : 100 - (100/(1 + avgGain/avgLoss));
+  for(let i = period+1; i<closes.length; i++){
+    const diff = closes[i] - closes[i-1];
+    const gain = diff > 0 ? diff : 0;
+    const loss = diff < 0 ? -diff : 0;
+    avgGain = ((avgGain*(period-1)) + gain)/period;
+    avgLoss = ((avgLoss*(period-1)) + loss)/period;
+    rsi[i] = avgLoss === 0 ? 100 : 100 - (100/(1 + avgGain/avgLoss));
+  }
+  return rsi;
+}
+
+function calculateCCI(highs, lows, closes, period=20){
+  const len = closes.length;
+  const out = Array(len).fill(null);
+  if(len < period) return out;
+  for(let i=period-1;i<len;i++){
+    const tp = [];
+    for(let j=i-period+1;j<=i;j++){
+      tp.push((highs[j] + lows[j] + closes[j]) / 3);
+    }
+    const sma = tp.reduce((a,b)=>a+b,0)/period;
+    const meanDev = tp.reduce((a,b)=>a+Math.abs(b-sma),0)/period;
+    const currentTP = (highs[i] + lows[i] + closes[i]) / 3;
+    out[i] = meanDev===0 ? 0 : (currentTP - sma) / (0.015 * meanDev);
+  }
+  return out;
+}
+
+function calculateROC(closes, period=9){
+  const out = Array(closes.length).fill(null);
+  if(!closes || closes.length <= period) return out;
+  for(let i=period;i<closes.length;i++){
+    const prev = closes[i-period];
+    out[i] = prev === 0 ? null : (closes[i] - prev) / prev * 100;
+  }
+  return out;
+}
+
+function calculateMACD(closes, fast=12, slow=26, signal=9){
+  const emaFast = calculateEMAArray(closes, fast);
+  const emaSlow = calculateEMAArray(closes, slow);
+  const macdLine = closes.map((_,i)=>{
+    if(emaFast[i]==null || emaSlow[i]==null) return null;
+    return emaFast[i] - emaSlow[i];
+  });
+  const signalLine = calculateEMAArray(macdLine.map(v=>v==null?null:v), signal);
+  const histogram = macdLine.map((v,i)=> (v==null || signalLine[i]==null) ? null : (v - signalLine[i]) );
+  return { macdLine, signalLine, histogram };
+}
+
+function calculateIchimoku(highs, lows, closes){
+  const len = closes.length;
+  const out = { tenkan: null, kijun: null, senkouA: null, senkouB: null, chikou: null };
+  if(len >= 9){
+    const high9 = Math.max(...highs.slice(-9));
+    const low9 = Math.min(...lows.slice(-9));
+    out.tenkan = (high9 + low9) / 2;
+  }
+  if(len >= 26){
+    const high26 = Math.max(...highs.slice(-26));
+    const low26 = Math.min(...lows.slice(-26));
+    out.kijun = (high26 + low26) / 2;
+  }
+  if(out.tenkan != null && out.kijun != null){
+    out.senkouA = (out.tenkan + out.kijun) / 2;
+  }
+  if(len >= 52){
+    const high52 = Math.max(...highs.slice(-52));
+    const low52  = Math.min(...lows.slice(-52));
+    out.senkouB = (high52 + low52) / 2;
+  }
+  if(len >= 26){
+    out.chikou = closes[closes.length - 26];
+  }
+  return out;
+}
+
+/* ===== بولینگر باند ===== */
+function calculateBollingerBands(closes, period=20, multiplier=2){
+  const sma = calculateMA(closes, period);
+  const stdDev = closes.map((v,i)=>{
+    if(i < period-1) return null;
+    const slice = closes.slice(i-period+1, i+1).filter(x=>x!=null);
+    const mean = slice.reduce((a,b)=>a+b,0)/slice.length;
+    const variance = slice.reduce((a,b)=>a+(b-mean)**2,0)/slice.length;
+    return Math.sqrt(variance);
+  });
+  const upper = sma.map((v,i)=> v!=null && stdDev[i]!=null ? v + multiplier*stdDev[i] : null);
+  const lower = sma.map((v,i)=> v!=null && stdDev[i]!=null ? v - multiplier*stdDev[i] : null);
+  return { upper, middle: sma, lower };
+}
+
+/* ===== کمک‌کننده DOM ===== */
+function createTableForCoin(coin){
+  const container = document.getElementById("tables");
+  const box = document.createElement("div");
+  box.className = "table-container";
+  let html = `<h2>${coin.name} — ${coin.symbol}</h2>`;
+  html += `<table><thead><tr>
+    <th>تایم‌فریم</th>
+    <th>قیمت</th>
+        <th>BB Middle</th>
+    <th class="ema20">EMA20</th>
+    <th class="ema50">EMA50</th>
+    <th class="ema100">EMA100</th>
+    <th class="ma200">MA200</th>
+    <th class="rsi">RSI</th>
+    <th class="cci">CCI</th>
+    <th class="roc">ROC</th>
+    <th class="macd">MACD</th>
+    <th class="macdSignal">Signal</th>
+    <th class="macdHist">Hist</th>
+    <th class="tenkan">Tenkan</th>
+    <th class="kijun">Kijun</th>
+    <th class="senkouA">SenkouA</th>
+    <th class="senkouB">SenkouB</th>
+    <th class="chikou">Chikou</th>
+    <th>سیگنال</th>
+    <th>BB Upper</th>
+    <th>BB Lower</th>
+    <th>TV</th>
+  </tr></thead><tbody id="${coin.symbol}_body"></tbody></table>`;
+  box.innerHTML = html;
+  container.appendChild(box);
+}
+
+/* بساز (یکبار) */
+coins.forEach(c=>createTableForCoin(c));
+/* ===== دریافت داده از بایننس با fallback پروکسی ===== */
+async function fetchData(symbol, interval){
+  const url = `https://api.mexc.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=200`;
+  try {
+    const res = await fetch(url);
+    if(!res.ok) throw new Error('fetch-error');
+    const data = await res.json();
+    if(!Array.isArray(data)) throw new Error('bad-data');
+    return data;
+  } catch(e){
+    try {
+      const proxy = 'https://corsproxy.io/?';
+      const res = await fetch(proxy + encodeURIComponent(url));
+      if(!res.ok) throw new Error('proxy-error');
+      const data = await res.json();
+      return data;
+    } catch(err){
+      console.error('fetch failed both direct and proxy:', e, err);
+      return null;
+    }
+  }
+}
+
+/* ===== به‌روزرسانی جدول ===== */
+async function updateTable(){
+  for(const coin of coins){
+    for(const tf of timeframes){
+      const raw = await fetchData(coin.symbol, tf.interval);
+      const tbody = document.getElementById(`${coin.symbol}_body`);
+      if(!raw){
+        let errRow = document.getElementById(`${coin.symbol}_${tf.interval}_err`);
+        if(!errRow){
+          errRow = document.createElement('tr');
+          errRow.id = `${coin.symbol}_${tf.interval}_err`;
+          errRow.innerHTML = `<td colspan="22">خطا در دریافت ${coin.symbol} — ${tf.label}</td>`;
+          tbody.appendChild(errRow);
+        } else {
+          errRow.querySelector('td').textContent = `خطا در دریافت ${coin.symbol} — ${tf.label}`;
+        }
+        continue;
+      }
+
+      const closes = raw.map(d => parseFloat(d[4]));
+      const highs  = raw.map(d => parseFloat(d[2]));
+      const lows   = raw.map(d => parseFloat(d[3]));
+      const price  = closes[closes.length-1];
+
+      const ema20 = calculateEMAArray(closes,20).at(-1);
+      const ema50 = calculateEMAArray(closes,50).at(-1);
+      const ema100 = calculateEMAArray(closes,100).at(-1);
+      const ma200Arr = calculateMA(closes,200);
+      const ma200 = ma200Arr.length ? ma200Arr.at(-1) : null;
+
+      const rsiArr = calculateRSIFromCloses(closes,14);
+      const rsi = rsiArr.at(-1);
+
+      const cciArr = calculateCCI(highs, lows, closes, 20);
+      const cci = cciArr.at(-1);
+
+      const rocArr = calculateROC(closes,9);
+      const roc = rocArr.at(-1);
+
+      const macdObj = calculateMACD(closes,12,26,9);
+      const macd = macdObj.macdLine.at(-1);
+      const macdSignal = macdObj.signalLine.at(-1);
+      const macdHist = macdObj.histogram.at(-1);
+
+      const ich = calculateIchimoku(highs, lows, closes);
+
+      /* ===== بولینگر ===== */
+      const bb = calculateBollingerBands(closes,14,2);
+      const bbUpper = bb.upper.at(-1);
+      const bbMiddle = bb.middle.at(-1);
+      const bbLower = bb.lower.at(-1);
+
+      let buy=false, sell=false;
+      if(price!=null && ema20!=null && ema50!=null && macd!=null && macdSignal!=null){
+        buy = (price > ema20 && ema20 > ema50) || (macd > macdSignal && macdHist > 0);
+        sell = (price < ema20 && ema20 < ema50) || (macd < macdSignal && macdHist < 0);
+      }
+
+      const rowId = `${coin.symbol}_${tf.interval}`;
+      let row = document.getElementById(rowId);
+      const errId = `${coin.symbol}_${tf.interval}_err`;
+      const oldErr = document.getElementById(errId);
+      if(oldErr) oldErr.remove();
+
+      if(!row){
+        row = document.createElement('tr');
+        row.id = rowId;
+        row.innerHTML = `
+          <td class="tfLabel"></td>
+          <td class="price"></td>
+           <td class="bbMiddle"></td>
+          <td class="ema20"></td>
+          <td class="ema50"></td>
+          <td class="ema100"></td>
+          <td class="ma200"></td>
+          <td class="rsi"></td>
+          <td class="cci"></td>
+          <td class="roc"></td>
+          <td class="macd"></td>
+          <td class="macdSignal"></td>
+          <td class="macdHist"></td>
+          <td class="tenkan"></td>
+          <td class="kijun"></td>
+          <td class="senkouA"></td>
+          <td class="senkouB"></td>
+          <td class="chikou"></td>
+          <td class="signalText"></td>
+          <td class="bbUpper"></td>
+          <td class="bbLower"></td>
+          <td class="tvLink"></td>
+        `;
+        tbody.appendChild(row);
+      }
+
+      row.querySelector('.tfLabel').textContent = tf.label;
+      row.querySelector('.price').textContent = price != null ? price.toFixed(5) : '-';
+      row.querySelector('.bbMiddle').textContent = bbMiddle != null ? bbMiddle.toFixed(5) : '-';
+      row.querySelector('.ema20').textContent = ema20 != null ? ema20.toFixed(5) : '-';
+      row.querySelector('.ema50').textContent = ema50 != null ? ema50.toFixed(5) : '-';
+      row.querySelector('.ema100').textContent = ema100 != null ? ema100.toFixed(5) : '-';
+      row.querySelector('.ma200').textContent = ma200 != null ? ma200.toFixed(5) : '-';
+      row.querySelector('.rsi').textContent = rsi != null ? rsi.toFixed(2) : '-';
+      row.querySelector('.cci').textContent = cci != null ? cci.toFixed(2) : '-';
+      row.querySelector('.roc').textContent = roc != null ? roc.toFixed(2) : '-';
+      row.querySelector('.macd').textContent = macd != null ? macd.toFixed(5) : '-';
+      row.querySelector('.macdSignal').textContent = macdSignal != null ? macdSignal.toFixed(5) : '-';
+      row.querySelector('.macdHist').textContent = macdHist != null ? macdHist.toFixed(5) : '-';
+      row.querySelector('.tenkan').textContent = ich.tenkan != null ? ich.tenkan.toFixed(5) : '-';
+      row.querySelector('.kijun').textContent = ich.kijun != null ? ich.kijun.toFixed(5) : '-';
+      row.querySelector('.senkouA').textContent = ich.senkouA != null ? ich.senkouA.toFixed(5) : '-';
+      row.querySelector('.senkouB').textContent = ich.senkouB != null ? ich.senkouB.toFixed(5) : '-';
+      row.querySelector('.chikou').textContent = ich.chikou != null ? ich.chikou.toFixed(5) : '-';
+      row.querySelector('.signalText').textContent = buy ? 'خرید ✅' : sell ? 'فروش ❌' : 'خنثی';
+      row.querySelector('.signalText').className = buy ? 'buy' : sell ? 'sell' : 'neutral';
+      row.querySelector('.bbUpper').textContent = bbUpper != null ? bbUpper.toFixed(5) : '-';
+      
+      row.querySelector('.bbLower').textContent = bbLower != null ? bbLower.toFixed(5) : '-';
+      row.querySelector('.tvLink').innerHTML = `<a class="tv" href="https://www.tradingview.com/chart/?symbol=BINANCE:${coin.symbol}" target="_blank">مشاهده</a>`;
+    }
+  }
+}
+
+/* اجرا و زمانبندی */
+updateTable();
+setInterval(updateTable, 60_000); // هر ۲ دیقه
+</script>
+</body>
+</html>

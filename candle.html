@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>
+  	تحلیل زنده چند تایم‌فریم - کندل شمعی 
+</title>
+  <style>
+    body { background: #111; color: #eee; font-family: sans-serif; text-align: center; padding: 10px; }
+    h1 { color: #00ff99; margin-bottom: 20px; font-size:16}
+    #controls { max-width: 1000px; margin: auto 0 10px 0; text-align: center; }
+    #cardsContainer { max-width: 1000px; margin: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 15px; direction: rtl; }
+    .card { background: #1c1c1c; border-radius: 10px; padding: 15px; text-align: left; box-shadow: 0 0 10px #00ff99a0; font-size: 0.9rem; }
+    .card h2 { margin-top: 0; color: #00ff99; }
+    .indicator { margin: 5px 0; padding-bottom: 5px; border-bottom: 1px dashed #555; }
+    .buy { color: #00ff00; font-weight: bold; }
+    .sell { color: #ff3333; font-weight: bold; }
+    .neutral { color: #cccccc; font-weight: bold; }
+    .signal { margin-top: 10px; font-size: 1.1em; font-weight: bold; }
+    .tick { font-weight: bold; margin-right: 5px; }
+    .tick.green { color: #0f0; }
+    .tick.red { color: #f33; }
+    /* MA */
+     .ma200 { color: #ff9900; font-weight: bold; }
+    /* EMA */
+    .ema20 { color: #00ff99; font-weight: bold; }
+    .ema50 { color: #33ffcc; font-weight: bold; }
+    .ema100 { color: #66ff66; font-weight: bold; }
+
+    /* RSI */
+    .rsi { color: #ab47bc; font-weight: bold; }
+    .rsiMA { color: #FDD835; font-weight: bold; }
+
+    /* CCI */
+    .cci { color: #089981; font-weight: bold; }
+    .cciMA { color: #FDD835; font-weight: bold; }
+
+    /* ROC */
+    .roc { color: #2962FF; font-weight: bold; }
+    .rocMA { color: #ff9800; font-weight: bold; }
+
+    /* Bollinger Bands */
+    .bollUpper { color: #dbdbdb; font-weight: bold; }
+    .bollMid { color: #9c9c9c; font-weight: bold; }
+    .bollLower { color: #dbdbdb; font-weight: bold; }
+
+    /* MACD */
+    .macd { color: #2962FF; font-weight: bold; }
+    .macdSignal { color: #FF6D00; font-weight: bold; }
+    .macdHist { color: #ff00ff; font-weight: bold; }
+
+    /* Ichimoku */
+    .tenkan { color: #2962ff; font-weight: bold; }
+    .kijun { color: #b71c1c; font-weight: bold; }
+   .senkouAc { color: #a5d6a7; font-weight: bold; }
+   .senkouBc { color: #ef9a9a; font-weight: bold; }
+    .senkouA { color: #a5d6a7; font-weight: bold; }
+    .senkouB { color: #ef9a9a; font-weight: bold; }
+    .chikou { color: #ffa726; font-weight: bold; }
+  </style>
+</head>
+<body>
+	  <div id="countdown">⏳ زمان باقیمانده کندل محاسبه می‌شود...</div>
+	
+  
+<h1>
+تحلیل زنده چند تایم‌فریم - کندل شمعی 
+
+</h1>
+<!-- لینک برگشت به صفحه اصلی -->
+<div id="homeLink" style="margin: 20px; text-align: center;">
+  <a href="index.html" 
+     style="color:#0ff; font-size:16px; font-weight:bold; text-decoration:none;">
+برگشت به صفحه اصلی
+</a>
+</div>
+<div id="tv-link"></div>
+  <div id="controls">
+    <label for="timeframeSelect">تایم فریم: </label>
+    <select id="timeframeSelect" aria-label="انتخاب تایم فریم">
+    <option value="15m" >۱۵ دقبقه</option>
+   <option value="30m" >۳۰ دقیقه</option>
+   <option value="1h" selected>۱ ساعته </option>
+    <option value="4h" >۴ ساعته</option>
+    <option value="8h">۸ ساعت</option>
+    <option value="1d">روزانه</option>
+    </select>
+  </div>
+
+  <div id="cardsContainer">در حال دریافت داده‌ها...</div>
+
+<script>
+const symbols = ["BLUMUSDT","BTCUSDT","ETHUSDT","SOLUSDT","SUIUSDT","XRPUSDT","NEARUSDT","CAKEUSDT","ASTERUSDT","ADAUSDT","CRVUSDT","XLMUSDT","DOGEUSDT","TRXUSDT","PUMPUSDT","TONUSDT"];
+
+async function fetchPrices(symbol, interval = "60m") {
+  try {
+    const url = `https://api.mexc.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=200`;
+    const proxy = "https://corsproxy.io/?";
+    const res = await fetch(proxy + encodeURIComponent(url));
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+    const data = await res.json();
+    if (!Array.isArray(data) || data.length === 0) throw new Error('پاسخ API نامعتبر یا خالی است');
+    return data.map(c => ({ time:new Date(c[0]), open:parseFloat(c[1]), high:parseFloat(c[2]), low:parseFloat(c[3]), close:parseFloat(c[4]), volume:parseFloat(c[5]) }));
+  } catch(e) { console.error(`خطا در دریافت داده برای ${symbol}:`, e.message); return null; }
+}
+
+
+// محاسبه زمان باقیمانده از تایم‌فریم
+
+// تبدیل تایم‌فریم به دقیقه
+function tfToMinutes(tf) {
+  switch(tf) {
+ 	case "15m": return 15;
+    case "30m": return 30;
+	case "60m": return 60;
+    case "4h": return 240;
+    case "8h": return 480;
+    case "1d": return 1440;
+    default: return 60; // ۱  ساعته
+  }
+}
+
+// محاسبه زمان باقیمانده از تایم‌فریم
+function updateCountdown(tf) {
+  const tfMinutes = tfToMinutes(tf);
+  const now = Date.now();
+  const tfMillis = tfMinutes * 60 * 1000;
+
+  // پیدا کردن شروع کندل صحیح (هماهنگ با UTC)
+  const startOfCandle = Math.floor(now / tfMillis) * tfMillis;
+  const endOfCandle = startOfCandle + tfMillis;
+
+  const remaining = endOfCandle - now;
+
+  const hrs = Math.floor(remaining / (1000 * 60 * 60));
+  const mins = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+  const secs = Math.floor((remaining % (1000 * 60)) / 1000);
+
+  document.getElementById("countdown").innerText =
+    `⏳ زمان باقیمانده: ${hrs} ساعت ${mins} دقیقه ${secs} ثانیه`;
+}
+
+// بروزرسانی تایمر هر ثانیه با استفاده از تایم‌فریم انتخاب‌شده
+setInterval(() => updateCountdown(currentInterval), 1000);
+
+
+
+// ================= توابع پایه =================
+function calculateEMA(data, period) {
+  if (!data || data.length < period) return Array(data ? data.length : 0).fill(null);
+  const k = 2 / (period + 1);
+  let ema = [];
+  let initialSum = 0;
+  for (let i = 0; i < period; i++) { initialSum += data[i].close; ema.push(null); }
+  let prevEma = initialSum / period;
+  ema[period - 1] = prevEma;
+  for (let i = period; i < data.length; i++) { prevEma = data[i].close * k + prevEma * (1 - k); ema.push(prevEma); }
+  return ema;
+}
+
+function calculateEMAArray(values, period) {
+  if (!values || values.length < period) return Array(values ? values.length : 0).fill(null);
+  const k = 2 / (period + 1);
+  const out = [];
+  let sum = 0;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (i < period - 1) { out.push(null); sum += (v ?? 0); continue; }
+    if (i === period - 1) { sum += (v ?? 0); out.push(sum / period); continue; }
+    const prev = out[i - 1];
+    const val = (v == null) ? prev : v;
+    out.push(val * k + prev * (1 - k));
+  }
+  return out;
+}
+// Bollinger Bands
+function calculateBollinger(data, period = 14) {
+  if (!data || data.length < period) return { upper: [], mid: [], lower: [] };
+  const mid = [];
+  for (let i = period - 1; i < data.length; i++) {
+    const slice = data.slice(i - period + 1, i + 1).map(d => d.close);
+    mid.push(slice.reduce((a,b)=>a+b,0)/period);
+  }
+  const upper = [], lower = [];
+  for (let i = period - 1; i < data.length; i++) {
+    const slice = data.slice(i - period + 1, i + 1).map(d => d.close);
+    const avg = mid[i-(period-1)];
+    const std = Math.sqrt(slice.map(p=>Math.pow(p-avg,2)).reduce((a,b)=>a+b,0)/period);
+    upper.push(avg + 2*std);
+    lower.push(avg - 2*std);
+  }
+  return { upper, mid, lower };
+}
+
+// RSI
+function calculateRSI(data, period = 14) {
+  if (!data || data.length < period+1) return [];
+  const gains=[], losses=[];
+  for (let i=1;i<data.length;i++){
+    const diff = data[i].close - data[i-1].close;
+    gains.push(diff>0?diff:0);
+    losses.push(diff<0?-diff:0);
+  }
+  let avgGain = gains.slice(0,period).reduce((a,b)=>a+b,0)/period;
+  let avgLoss = losses.slice(0,period).reduce((a,b)=>a+b,0)/period;
+  const rsi = [];
+  for (let i=0;i<period;i++) rsi.push(null);
+  for (let i=period;i<gains.length;i++){
+    avgGain = (avgGain*(period-1)+gains[i])/period;
+    avgLoss = (avgLoss*(period-1)+losses[i])/period;
+    const rs = avgGain/(avgLoss||1);
+    rsi.push(100-(100/(1+rs)));
+  }
+  return rsi;
+}
+
+// CCI
+function calculateCCI(data, period=14){
+  if(!data||data.length<period) return [];
+  const tp = data.map(d=>(d.high+d.low+d.close)/3);
+  const sma=[];
+  for(let i=period-1;i<tp.length;i++){
+    const slice = tp.slice(i-period+1,i+1);
+    const sum = slice.reduce((a,b)=>a+b,0);
+    sma.push(sum/period);
+  }
+  const cci=[];
+  for(let i=0;i<period-1;i++) cci.push(null);
+  for(let i=period-1;i<tp.length;i++){
+    const mean = sma[i-(period-1)];
+    const slice = tp.slice(i-period+1,i+1);
+    const meanDev = slice.reduce((a,b)=>a+Math.abs(b-mean),0)/period||1;
+    cci.push((tp[i]-mean)/(0.015*meanDev));
+  }
+  return cci;
+}
+
+// MA
+function calculateMA(data, period){
+  if(!data||data.length<period) return [];
+  const ma=[];
+  for(let i=0;i<data.length;i++){
+    if(i<period-1||data[i]==null||data[i]==undefined) ma.push(null);
+    else{
+      const slice=data.slice(i-period+1,i+1).filter(v=>v!=null);
+      ma.push(slice.reduce((a,b)=>a+b,0)/period);
+    }
+  }
+  return ma;
+}
+
+// MACD
+function calculateMACD(prices, fast=12, slow=26, signal=9){
+  const emaFast = calculateEMA(prices,fast);
+  const emaSlow = calculateEMA(prices,slow);
+  const macdLine = emaFast.map((v,i)=>(v==null||emaSlow[i]==null)?null:(v-emaSlow[i]));
+  const signalLine = calculateEMAArray(macdLine, signal);
+  const histogram = macdLine.map((m,i)=>(m==null||signalLine[i]==null)?null:(m-signalLine[i]));
+  return { macdLine, signalLine, histogram };
+}
+
+// ROC
+function calculateROC(prices, period=9){
+  if(!prices||prices.length<period) return [];
+  const roc=[];
+  for(let i=0;i<prices.length;i++){
+    if(i<period){roc.push(null); continue;}
+    const val = ((prices[i].close - prices[i-period].close)/prices[i-period].close)*100;
+    roc.push(val);
+  }
+  return roc;
+}
+
+// Ichimoku
+function calculateIchimoku(data){
+  if(!data || data.length < 52) return { tenkan: Array(data.length).fill(null), kijun: Array(data.length).fill(null), senkouA: Array(data.length).fill(null), senkouB: Array(data.length).fill(null), chikou: Array(data.length).fill(null) };
+  const tenkan = [], kijun = [], senkouA = [], senkouB = [], chikou = [];
+  for(let i=0;i<data.length;i++){
+    tenkan.push(i>=8 ? (Math.max(...data.slice(i-8,i+1).map(d=>d.high))+Math.min(...data.slice(i-8,i+1).map(d=>d.low)))/2 : null);
+    kijun.push(i>=25 ? (Math.max(...data.slice(i-25,i+1).map(d=>d.high))+Math.min(...data.slice(i-25,i+1).map(d=>d.low)))/2 : null);
+    senkouA.push(i>=25 ? (tenkan[i]+kijun[i])/2 : null);
+    senkouB.push(i>=51 ? (Math.max(...data.slice(i-51,i+1).map(d=>d.high))+Math.min(...data.slice(i-51,i+1).map(d=>d.low)))/2 : null);
+    chikou.push(i>=26 ? data[i-26].close : null);
+  }
+  return {tenkan,kijun,senkouA,senkouB,chikou};
+}
+
+// دریافت داده‌ها و محاسبه سیگنال‌ها - نسخه اصلاح شده
+async function getSymbolData(symbol, interval){
+  const prices = await fetchPrices(symbol, interval);
+  if(!prices || prices.length<200) return null;
+
+  const price = prices[prices.length-1].close;
+  const ema20 = calculateEMA(prices,20);
+  const ema50 = calculateEMA(prices,50);
+  const ema100 = calculateEMA(prices,100);
+    const ma200 = calculateMA(prices.map(p=>p.close),200);
+  const boll = calculateBollinger(prices);
+  const rsi = calculateRSI(prices);
+  const rsiMA = calculateMA(rsi,9);
+  const cci = calculateCCI(prices);
+  const cciMA = calculateMA(cci,9);
+  const macd = calculateMACD(prices);
+  const roc = calculateROC(prices,9);
+  const rocMA = calculateMA(roc,5);
+  const ichimoku = calculateIchimoku(prices);
+
+  // آخرین مقادیر شاخص‌ها
+  const latest = {
+    ema20: ema20.at(-1), ema50: ema50.at(-1), ema100: ema100.at(-1),ma200: ma200[ma200.length-1],
+    bollUpper: boll.upper.at(-1), bollMid: boll.mid.at(-1), bollLower: boll.lower.at(-1),
+    rsi: rsi.at(-1), rsiMA: rsiMA.at(-1), cci: cci.at(-1), cciMA: cciMA.at(-1),
+    macd: macd.macdLine.at(-1), macdSignal: macd.signalLine.at(-1), macdHist: macd.histogram.at(-1),
+    roc: roc.at(-1), rocMA: rocMA.at(-1),
+    ichimoku: { tenkan: ichimoku.tenkan.at(-1), kijun: ichimoku.kijun.at(-1),
+  senkouAc: ichimoku.senkouA.at(-25), 
+senkouBc: ichimoku.senkouB.at(-25),
+ senkouA: ichimoku.senkouA.at(-1), 
+senkouB: ichimoku.senkouB.at(-1) }
+  };
+
+  // بررسی وجود مقدار معتبر برای اندیکاتورها
+  const prevRSI = rsi.at(-2), prevRSIMA = rsiMA.at(-2), prevCCI = cci.at(-2), prevCCIMA = cciMA.at(-2);
+  const hasValidData = [price, latest.ema20, latest.bollMid, latest.rsi, latest.rsiMA, latest.cci].every(v=>v!=null);
+
+  let buySignal=false, sellSignal=false;
+  if(hasValidData){
+
+
+// شرط خرید انعطاف‌پذیرتر
+    const priceSignal = price > latest.ema20 && price > latest.bollMid;
+    const rsiSignal = latest.rsi > latest.rsiMA;       
+    const cciSignal =prevCCI<0 &&  latest.cci > 0;                 
+
+    // شرط فروش انعطاف‌پذیرتر
+    const priceSellSignal = price < latest.ema20 && price < latest.bollMid;
+    const rsiSellSignal = latest.rsi < latest.rsiMA;   
+    const cciSellSignal = prevCCI>0 && latest.cci < 0;             
+
+    // تعیین نهایی سیگنال‌ها
+    buySignal = priceSignal && rsiSignal && cciSignal;
+    sellSignal = priceSellSignal && rsiSellSignal && cciSellSignal;
+  }
+
+  return {...latest, symbol, price, buySignal, sellSignal};
+
+}
+
+// نمایش Tick سبز/قرمز
+function getTickHtml(condition){ return condition ? '<span class="tick green">✔</span>' : '<span class="tick red">✘</span>'; }
+
+// اجرا و به‌روزرسانی کارت‌ها
+async function asyncPool(poolLimit, array, iteratorFn){
+  const ret=[], executing=[];
+  for(const item of array){
+    const p=Promise.resolve().then(()=>iteratorFn(item));
+    ret.push(p);
+    if(poolLimit<=array.length){
+      const e=p.then(()=>executing.splice(executing.indexOf(e),1));
+      executing.push(e);
+      if(executing.length>=poolLimit) await Promise.race(executing);
+    }
+  }
+  return Promise.all(ret);
+}
+
+let currentInterval='60m';
+async function updateAll(){
+  const container=document.getElementById("cardsContainer");
+  container.innerHTML="در حال دریافت داده‌ها...";
+  try{
+    const results=await asyncPool(5,symbols,s=>getSymbolData(s,currentInterval));
+    container.innerHTML="";
+    results.forEach(data=>{
+      if(!data){ container.innerHTML+=`<div class="card"><h2>خطا در دریافت داده</h2></div>`; return; }
+
+      container.innerHTML+=`
+<div class="card">
+  <h2>${data.symbol}</h2>
+  <div class="indicator">💰 قیمت: ${data.price.toFixed(5)} USD</div>
+  
+  <div class="indicator">📈 RSI: ${data.rsi?.toFixed(2) ?? '—'}   <span class="rsiMA">MA(14): ${data.rsiMA!=null?data.rsiMA.toFixed(2):'—'}${getTickHtml(data.rsi>data.rsiMA)}  </span></div>
+  
+  <div class="indicator">📈 CCI: ${data.cci?.toFixed(2) ?? '—'}    <span class="cciMA">MA(14): ${data.cciMA!=null?data.cciMA.toFixed(2):'—'}${getTickHtml(data.cci>0)} </span></div>
+  
+  <div class="indicator">📈 ROC: ${data.roc?.toFixed(2) ?? '—'}    <span class="rocMA">MA(5): ${data.rocMA!=null?data.rocMA.toFixed(2):'—'}${getTickHtml(data.roc>data.rocMA)} </span></div>
+  
+  <div class="indicator ema20">🔸 EMA20: ${data.ema20?.toFixed(5) ?? '—'}${getTickHtml(data.price>data.ema20)}
+</div>
+  
+  
+       <div class="indicator">
+        <span class="ema50">🔸 EMA50: ${data.ema50?.toFixed(5) ?? '—'}</span>
+        <span class="ema100">🔸 EMA100: ${data.ema100?.toFixed(5) ?? '—'}</span></div>
+  
+  
+  <div class="indicator ma200">🔸 MA200: ${data.ma200?.toFixed(5) ?? '—'} ${getTickHtml(data.price>data.ma200)}</div>
+  
+  
+        <div class="indicator">
+  <div class="indicator bollMid">🔘 BB Mid: ${data.bollMid?.toFixed(5) ?? '—'}${getTickHtml(data.price>data.bollMid)}
+</div>
+
+<span class="bollUpper">🔵 BB Upper: ${data.bollUpper?.toFixed(5) ?? '—'}</span>
+<span class="bollLower">🔵 BB Lower: ${data.bollLower?.toFixed(5) ?? '—'}</span></div>
+  
+  <div class="indicator">
+    <span class="macd">MACD: ${data.macd != null ? data.macd.toFixed(4) : '—'}</span>
+    <span class="macdSignal"> | Signal(9): ${data.macdSignal != null ? data.macdSignal.toFixed(4) : '—'}${getTickHtml(data.macd>data.macdSignal)}</span>
+  <br>  <span class="macdHist"> Hist: ${data.macdHist != null ? data.macdHist.toFixed(4) : '—'}</span>
+  </div>
+  
+  <div class="indicator">
+    <span class="tenkan">Tenkan: ${data.ichimoku.tenkan != null ? data.ichimoku.tenkan.toFixed(4) : '—'}</span>
+    <span class="kijun"> | Kijun: ${data.ichimoku.kijun != null ? data.ichimoku.kijun.toFixed(4) : '—'}${getTickHtml(data.price>data.ichimoku.tenkan)}</span>
+    
+        <br><span class="senkouAC">  Senkou Ac: ${data.ichimoku.senkouAc != null ? data.ichimoku.senkouAc.toFixed(4) : '—'}</span>
+    <span class="senkouBC"> | Senkou Bc: ${data.ichimoku.senkouBc != null ? data.ichimoku.senkouBc.toFixed(4) : '—'}${getTickHtml(data.ichimoku.senkouAc > data.ichimoku.senkouBc)}</span>
+    
+    <br><span class="senkouA">  Senkou A: ${data.ichimoku.senkouA != null ? data.ichimoku.senkouA.toFixed(4) : '—'}</span>
+    <span class="senkouB"> | Senkou B: ${data.ichimoku.senkouB != null ? data.ichimoku.senkouB.toFixed(4) : '—'}${getTickHtml(data.ichimoku.senkouA > data.ichimoku.senkouB)}</span>
+  </div>
+  
+  
+  <div class="signal ${data.buySignal?"buy":data.sellSignal?"sell":"neutral"}">سیگنال: ${data.buySignal?"خرید ✅":data.sellSignal?"فروش ❌":"خنثی"}</div>
+  
+    <!-- 🔗 لینک به تریدینگ ویو -->
+  <div class="tv-link" style="margin-top:8px; text-align:center;">
+    <a href="https://www.tradingview.com/chart/?symbol=BINANCE:${data.symbol}" 
+       target="_blank" 
+       style="color:#0ff; font-size:14px; text-decoration:underline;">
+                               مشاهده ${data.symbol} در تریدینگ‌ویو
+    </a>
+  </div>
+  
+  
+  
+</div>`;
+    });
+  }catch(e){ container.innerHTML=`<div class="card"><h2>خطای کلی در دریافت داده‌ها</h2></div>`; console.error(e); }
+}
+
+document.getElementById('timeframeSelect')?.addEventListener('change', e=>{ currentInterval=e.target.value; updateAll(); });
+updateAll();
+setInterval(()=>updateAll(),60000);
+
+
+</script>
+</body>
+</html>
