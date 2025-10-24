@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لیست قابل تنظیم قیمت کریپتو (CoinGecko) - واکنش‌گرا</title>
+    <style>
+        /* --- استایل پایه و دسکتاپ --- */
+        body { font-family: 'Tahoma', sans-serif; background-color: #f0f2f5; color: #333; padding: 10px; direction: rtl; text-align: right; }
+        .container { max-width: 1400px; margin: 10px auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1); }
+        h1 { text-align: center; color: #007bff; margin-bottom: 20px; border-bottom: 2px solid #007bff; padding-bottom: 10px; font-size: 1.8rem; }
+        
+        /* --- کنترل‌های تنظیمات و دکمه‌ها --- */
+        .controls { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; margin-bottom: 20px; background-color: #e9ecef; padding: 15px; border-radius: 8px; border: 1px solid #dee2e6; gap: 10px; }
+        .controls div { display: flex; align-items: center; }
+        .controls label, .controls input, .controls button { margin-left: 10px; font-size: 0.95rem; }
+        .controls input[type="number"] { width: 80px; padding: 8px; border: 1px solid #ced4da; border-radius: 4px; text-align: center; }
+        .controls button { padding: 8px 15px; border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.3s; color: white; }
+        #load-data-btn { background-color: #28a745; }
+        #load-data-btn:hover { background-color: #218838; }
+        #download-csv-btn { background-color: #007bff; }
+        #download-csv-btn:hover { background-color: #0056b3; }
+        #download-csv-btn:disabled { background-color: #6c757d; cursor: not-allowed; }
+
+        /* --- جدول و استایل‌ها --- */
+        .table-wrapper { overflow-x: auto; /* فعال کردن اسکرول افقی در موبایل */ }
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; min-width: 700px; /* حداقل عرض برای نمایش بهتر ستون‌ها */ }
+        th, td { padding: 12px 8px; text-align: right; border-bottom: 1px solid #e9ecef; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.9rem; }
+        th { background-color: #f8f9fa; color: #495057; font-weight: bold; border-top: 2px solid #dee2e6; }
+        tr:hover { background-color: #f8f9fa; }
+        
+        /* تنظیم عرض ستون‌ها */
+        #crypto-table th:nth-child(1) { width: 6%; } 
+        #crypto-table th:nth-child(2) { width: 22%; } 
+        #crypto-table th:nth-child(3) { width: 30%; } 
+        #crypto-table th:nth-child(4) { width: 18%; } 
+        #crypto-table th:nth-child(5) { width: 15%; } 
+        #crypto-table th:nth-child(6) { width: 24%; } 
+
+        /* --- وضعیت بارگذاری و نمایش تغییرات --- */
+        .spinner { border: 4px solid rgba(0, 0, 0, 0.1); border-top: 4px solid #007bff; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 50px auto; display: none; } /* ابتدا پنهان است */
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .positive { color: #28a745; font-weight: bold; }
+        .negative { color: #dc3545; font-weight: bold; }
+        .na { color: #6c757d; }
+        #error-message { font-weight: bold; }
+
+        /* --- Media Query برای موبایل (واکنش‌گرایی) --- */
+        @media (max-width: 768px) {
+            .container { padding: 10px; }
+            h1 { font-size: 1.4rem; }
+            .controls { flex-direction: column; align-items: stretch; }
+            .controls div { flex-direction: column; align-items: flex-start; margin-bottom: 10px; }
+            .controls label, .controls input { margin: 5px 0 0 0; }
+            .controls button { width: 100%; margin: 5px 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>📊 نمایش قیمت کریپتو با تنظیم رتبه شروع</h1>
+        
+        <div class="controls">
+            <div>
+                <label for="start-rank">شروع از رتبه:</label>
+                <input type="number" id="start-rank" value="1" min="1" step="100">
+                <button id="load-data-btn">بارگذاری ۵۰۰ ارز</button>
+            </div>
+            <button id="download-csv-btn" disabled>📥 دانلود (CSV)</button>
+        </div>
+
+        <div id="error-message" style="color: red; text-align: center; margin-top: 15px; display: none;"></div>
+        <div id="loading" class="spinner"></div>
+
+        <div class="table-wrapper">
+            <table id="crypto-table">
+                <thead>
+                    <tr>
+                        <th># رتبه</th>
+                        <th>نام ارز</th>
+                        <th>شناسه API</th>
+                        <th>قیمت (USD)</th>
+                        <th>تغییر ۲۴ ساعته</th>
+                        <th>مارکت کپ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    </tbody>
+            </table>
+        </div>
+    </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', () => {
+        const tableBody = document.querySelector('#crypto-table tbody');
+        const loadingIndicator = document.getElementById('loading');
+        const startRankInput = document.getElementById('start-rank');
+        const loadDataButton = document.getElementById('load-data-btn');
+        const downloadCsvButton = document.getElementById('download-csv-btn');
+        const errorMessageDiv = document.getElementById('error-message');
+        
+        const coinsPerPage = 100;
+        const itemsToFetch = 500; 
+        const numRequests = itemsToFetch / coinsPerPage; 
+        const maxPage = 20; 
+        let allCoinsData = [];
+
+        // --- توابع کمکی فرمت‌دهی ---
+        
+        const formatCurrency = (number) => {
+            if (typeof number !== 'number') return 'N/A';
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: number < 0.1 ? 8 : 2
+            }).format(number);
+        };
+
+        const formatPercent = (number) => {
+            if (typeof number !== 'number' || isNaN(number) || number === null) return 'N/A';
+            
+            return new Intl.NumberFormat('en-US', {
+                style: 'percent',
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+                signDisplay: 'always'
+            }).format(number / 100);
+        };
+
+        // --- توابع اصلی ---
+
+        const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+        const fetchCryptoData = async (pageNumber) => {
+            const apiUrl = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${coinsPerPage}&page=${pageNumber}&sparkline=false`;
+            
+            try {
+                const response = await fetch(apiUrl);
+                if (!response.ok) {
+                    errorMessageDiv.style.display = 'block';
+                    errorMessageDiv.innerHTML = `❌ خطا در API: وضعیت ${response.status} در صفحه ${pageNumber}. لطفا ۱ دقیقه صبر کرده و دوباره امتحان کنید.`;
+                    throw new Error('CoinGecko API request failed: ' + response.statusText);
+                }
+                const data = await response.json();
+                
+                const currentRankStart = (pageNumber - 1) * coinsPerPage + 1;
+
+                const indexedData = data.map((coin, index) => ({
+                    ...coin,
+                    market_cap_rank: currentRankStart + index
+                }));
+
+                return indexedData;
+
+            } catch (error) {
+                console.error(`Error fetching page ${pageNumber}:`, error);
+                return null;
+            }
+        };
+        
+        const loadData = async () => {
+            tableBody.innerHTML = '';
+            errorMessageDiv.style.display = 'none';
+            loadingIndicator.style.display = 'block';
+            downloadCsvButton.disabled = true;
+            
+            const startRank = parseInt(startRankInput.value) || 1;
+            let startPage = Math.ceil(startRank / coinsPerPage); 
+
+            if (startPage > maxPage) {
+                loadingIndicator.style.display = 'none';
+                errorMessageDiv.style.display = 'block';
+                errorMessageDiv.innerHTML = `⚠️ حداکثر رتبه قابل جستجو ${maxPage * coinsPerPage} است. لطفا مقدار کمتری وارد کنید.`;
+                return;
+            }
+            
+            allCoinsData = [];
+            let errorOccurred = false;
+
+            for (let i = 0; i < numRequests; i++) {
+                const pageNumber = startPage + i; 
+
+                if (pageNumber > maxPage) break;
+
+                if (i > 0) {
+                    await sleep(500); 
+                }
+
+                const data = await fetchCryptoData(pageNumber);
+                
+                if (data === null) {
+                    errorOccurred = true;
+                    break; 
+                } else if (data.length > 0) {
+                    allCoinsData = allCoinsData.concat(data);
+                } else {
+                     break;
+                }
+            }
+            
+            loadingIndicator.style.display = 'none';
+
+            if (errorOccurred || allCoinsData.length === 0) {
+                if (!errorMessageDiv.innerHTML) {
+                    errorMessageDiv.style.display = 'block';
+                    errorMessageDiv.innerHTML = '❌ داده‌ای برای نمایش پیدا نشد.';
+                }
+            } else {
+                displayData(allCoinsData, startRank);
+                if (allCoinsData.length > 0) { 
+                     downloadCsvButton.disabled = false;
+                }
+            }
+        };
+
+        const displayData = (coins, startRank) => {
+            const offset = (startRank - 1) % coinsPerPage; 
+            const coinsToDisplay = coins.slice(offset);
+
+            if (coinsToDisplay.length === 0) {
+                 errorMessageDiv.style.display = 'block';
+                 errorMessageDiv.innerHTML = '❌ داده‌ای برای نمایش پیدا نشد.';
+                 return;
+            }
+
+            coinsToDisplay.forEach((coin) => {
+                const row = tableBody.insertRow();
+                
+                const priceChange = coin.price_change_percentage_24h_in_currency || 
+                                    coin.price_change_percentage_24h || 
+                                    0.00;
+                
+                let priceChangeClass = 'na';
+                if (typeof priceChange === 'number' && priceChange !== 0.00) {
+                    priceChangeClass = priceChange > 0 ? 'positive' : 'negative';
+                }
+
+                row.innerHTML = `
+                    <td>${coin.market_cap_rank || 'N/A'}</td>
+                    <td><img src="${coin.image}" alt="${coin.name}" width="20" height="20" style="vertical-align: middle; margin-left: 8px;"> ${coin.symbol.toUpperCase()}</td>
+                    <td>${coin.id || 'N/A'}</td>
+                    <td>${formatCurrency(coin.current_price)}</td>
+                    <td class="${priceChangeClass}">${formatPercent(priceChange)}</td>
+                    <td>${formatCurrency(coin.market_cap)}</td>
+                `;
+            });
+        };
+
+        // --- دانلود CSV ---
+
+        const downloadCSV = () => {
+            if (allCoinsData.length === 0) return;
+
+            let csv = 'رتبه,نام,شناسه API,نماد,قیمت (USD),تغییر 24 ساعته,مارکت کپ\n';
+
+            allCoinsData.forEach(coin => {
+                const priceChange = coin.price_change_percentage_24h_in_currency || coin.price_change_percentage_24h || 0;
+                
+                const row = [
+                    coin.market_cap_rank,
+                    coin.name,
+                    coin.id,
+                    coin.symbol.toUpperCase(),
+                    coin.current_price,
+                    priceChange.toFixed(2) + '%', 
+                    coin.market_cap
+                ];
+                csv += row.map(item => `"${item}"`).join(',') + '\n';
+            });
+
+            const blob = new Blob(["\uFEFF" + csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.setAttribute('download', 'crypto_prices_export.csv');
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        };
+
+        // --- رویدادها ---
+
+        loadDataButton.addEventListener('click', loadData);
+        downloadCsvButton.addEventListener('click', downloadCSV);
+    });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,214 @@
+<!DOCTYPE html>  <html lang="fa" dir="rtl">  
+<head>  
+<meta charset="UTF-8" />  
+<meta name="viewport" content="width=device-width, initial-scale=1" />  
+<title>سیگنال EMA20 و بولینگر - 100 ارز برتر</title>  
+<style>  
+  body { background: #111; color: #eee; font-family: sans-serif; padding: 10px; text-align: center;}  
+  .buy { color: #0f0; }  
+  .sell { color: #f33; }  
+  #results { max-width: 900px; margin: auto; text-align: center; min-height: 100px; }  
+  .item { background: #222; padding: 10px; margin: 8px 0; border-radius: 6px; line-height: 1.6; }  
+  select { padding: 5px; font-size: 16px; margin-bottom: 15px; }  
+  .loading { text-align: center; color: #0f0; font-size: 18px; animation: blink 1s infinite; }  
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }  
+</style>  
+</head>  
+<body>  
+<h1>1003-آزمون سیگنال خرید/فروش با EMA20 و بولینگر</h1>  <label for="timeframe">انتخاب تایم‌فریم: </label>
+<select id="timeframe">
+
+  <option value="4h">۴ ساعته</option>  
+  <option value="8h">۸ ساعته</option>  
+  <option value="1d">روزانه</option>  
+</select>  <div id="results"><div class="loading">در حال دریافت داده‌ها...</div></div>  <script>  
+const symbols = [  
+
+"SUNUSDT",
+"EGLDUSDT",
+"EIGENUSDT",
+"DEXEUSDT",
+"XECUSDT",
+"USYCUSDT",
+"TKXUSDT",
+"KAVAUSDT",
+"ZKUSDT",
+"CHZUSDT",
+"BEAMUSDT",
+"AXSUSDT",
+"WUSDT",
+"ATHUSDT",
+"WEMIXUSDT",
+"UBTCUSDT",
+"ZORAUSDT",
+"RONUSDT",
+"BBSOLUSDT",
+"DEEPUSDT",
+"ETH+USDT",
+"WAVAXUSDT",
+"OHMUSDT",
+"1INCHUSDT",
+"MOVEUSDT",
+"SAVAXUSDT",
+"EOSUSDT",
+"EBTCUSDT",
+"WHYPEUSDT",
+"SFRXETHUSDT",
+"CVXUSDT",
+"GNOUSDT",
+"AXLUSDT",
+"WBTCUSDT",
+"VENOMUSDT",
+"AKTUSDT",
+"WETHUSDT",
+"DRIFTUSDT",
+"GHOUSDT",
+"LUNCUSDT",
+"MATICUSDT",
+"JSTUSDT",
+"CTCUSDT",
+"DOGUSDT",
+"SNEKUSDT",
+"PROVEUSDT",
+"TOSHIUSDT",
+"TURBOUSDT",
+"TWTUSDT",
+"EUTBLUSDT",
+"AMPUSDT",
+"POPCATUSDT",
+"USRUSDT",
+"FRAXUSDT",
+"DSOLUSDT",
+"DCRUSDT",
+"PUMPBTCUSDT",
+"QUBICUSDT",
+"VELOUSDT",
+"TRIBEUSDT",
+"ABTCUSDT",
+"LPTUSDT",
+"DASHUSDT",
+"CWBTCUSDT",
+"OMUSDT",
+"MEWUSDT",
+"KAITOUSDT",
+"FRAXUSDT",
+"SAFEUSDT",
+"CHEEMSUSDT",
+"IOTXUSDT",
+"MOCAUSDT",
+"BTSEUSDT",
+"BORGUSDT",
+"TFUELUSDT",
+"BIOUSDT",
+"GLMUSDT",
+"CKBUSDT",
+"UNIBTCUSDT",
+"STHYPEUSDT",
+"KSMUSDT",
+"SFPUSDT",
+"ZROUSDT",
+"BCAPUSDT",
+"PLUMEUSDT",
+"ASBNBUSDT",
+"BERAUSDT",
+"PNUTUSDT",
+"RLPUSDT",
+"NPCUSDT",
+"OETHUSDT"
+];  
+  
+async function fetchPrices(symbol, interval) {  
+  try {  
+    const url = `https://api.mexc.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=50`;  
+    const proxy = "https://corsproxy.io/?";  
+    const res = await fetch(proxy + encodeURIComponent(url));  
+    if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);  
+    const data = await res.json();  
+    return data.map(c => ({ time: new Date(c[0]), close: parseFloat(c[4]) }));  
+  } catch(e) {  
+    console.error(`خطا در دریافت داده برای ${symbol}:`, e.message);  
+    return null;  
+  }  
+}  
+  
+function calculateEMA(data, period) {  
+  if (!data || data.length < period) return [];  
+  const k = 2 / (period + 1);  
+  let ema = [data.slice(0, period).reduce((a,b) => a + b.close, 0) / period];  
+  for (let i = period; i < data.length; i++) {  
+    ema.push(data[i].close * k + ema[ema.length -1] * (1 - k));  
+  }  
+  return ema;  
+}  
+  
+function calculateBollinger(data, period=20) {  
+  if (!data || data.length < period) return { mid: [] };  
+  const mid = [];  
+  for (let i = period - 1; i < data.length; i++) {  
+    const slice = data.slice(i - period +1, i + 1).map(d => d.close);  
+    const avg = slice.reduce((a,b) => a + b, 0) / period;  
+    mid.push(avg);  
+  }  
+  return { mid };  
+}  
+  
+async function checkSignal(symbol, interval) {  
+  const prices = await fetchPrices(symbol, interval);  
+  if (!prices || prices.length < 21) return null;  
+  
+  const ema20 = calculateEMA(prices, 20);  
+  const boll = calculateBollinger(prices);  
+  
+  const lastClose = prices[prices.length -1].close;  
+  const prevClose = prices[prices.length -2].close;  
+  const prevEMA20 = ema20[ema20.length -2];  
+  const lastEMA20 = ema20[ema20.length -1];  
+  const prevBollMid = boll.mid[boll.mid.length -2];  
+  const lastBollMid = boll.mid[boll.mid.length -1];  
+  
+  if (prevClose < prevEMA20 && prevClose < prevBollMid && lastClose > lastEMA20 && lastClose > lastBollMid) {  
+    return {symbol, signal: 'خرید ✅', price: lastClose, ema: lastEMA20, boll: lastBollMid};  
+  }  
+  if (prevClose > prevEMA20 && prevClose > prevBollMid && lastClose < lastEMA20 && lastClose < lastBollMid) {  
+    return {symbol, signal: 'فروش ❌', price: lastClose, ema: lastEMA20, boll: lastBollMid};  
+  }  
+  return null;  
+}  
+  
+async function run(interval) {  
+  const container = document.getElementById('results');  
+  container.innerHTML = '<div class="loading">در حال دریافت داده‌ها...</div>';  
+  
+  const results = [];  
+  for (const symbol of symbols) {  
+    const res = await checkSignal(symbol, interval);  
+    if (res) results.push(res);  
+  }  
+  
+  if (results.length === 0) {  
+    container.innerHTML = 'هیچ سیگنال خرید یا فروشی یافت نشد.';  
+  } else {  
+    container.innerHTML = '';  
+    results.forEach(r => {  
+      const div = document.createElement('div');  
+      div.className = 'item ' + (r.signal.includes('خرید') ? 'buy' : 'sell');  
+      div.innerHTML = `<strong>${r.symbol}</strong>: ${r.signal}<br>  
+Price :  ${r.price.toFixed(6)} 
+<br> EMA20 : ${r.ema.toFixed(6)} 
+<br> BBMID  :  ${r.boll.toFixed(6)}`;  
+      container.appendChild(div);  
+    });  
+  }  
+}  
+  
+// اجرای اولیه  
+let currentInterval = document.getElementById('timeframe').value;  
+run(currentInterval);  
+  
+// تغییر تایم‌فریم بدون ریست کامل صفحه  
+document.getElementById('timeframe').addEventListener('change', function() {  
+  currentInterval = this.value;  
+  run(currentInterval);  
+});  
+</script>  </body>  
+</html>  

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="fa" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <title>۵۰۰ ارز برتر با مارکت کپ + تغییرات</title>
+  <style>
+    body {
+      font-family: Tahoma, sans-serif;
+      background-color: #121212;
+      color: #eee;
+      padding: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      direction: rtl;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 8px 12px;
+      text-align: center;
+    }
+    th {
+      background: #222;
+    }
+    tr:nth-child(even) {
+      background: #1e1e1e;
+    }
+    #loading {
+    	text-align: center;
+      font-size: 12px;
+      margin-bottom: 15px;
+    }
+    button {
+      margin: 10px 10px 10px 0;
+      padding: 8px 15px;
+      font-size: 14px;
+      cursor: pointer;
+      background-color: #333;
+      border: none;
+      color: white;
+      border-radius: 5px;
+      
+    }
+    button:hover {
+      background-color: #555;
+    }
+    h2 { margin-top: 20px;    text-align: center;}
+  </style>
+</head>
+<body>
+
+<h2>۵۰۰ ارز برتر بازار با مارکت کپ و تغییرات</h2>
+<div id="loading">در حال دریافت داده‌ها...</div>
+
+<button id="download-txt" disabled>دانلود TXT</button>
+<button id="download-csv" disabled>دانلود CSV</button>
+<button id="download-pairs-txt" disabled>دانلود جفت ارزها (USDT)</button>
+
+<table id="coins-table" style="display:none;">
+  <thead>
+    <tr>
+      <th>ردیف</th>
+      <th>نماد</th>
+      <th>مارکت کپ (دلار)</th>
+      <th>قیمت فعلی (دلار)</th>
+      <th>حجم ۲۴ساعته</th>
+      <th>تغییر ۲۴ساعته (%)</th>
+      <th>تغییر ۷ روزه (%)</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+  const totalCoins = 500;
+  const perPage = 100;
+  const totalPages = Math.ceil(totalCoins / perPage);
+  let allCoins = [];
+  let currentPage = 1;
+
+  async function fetchPage(page) {
+    const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${perPage}&page=${page}&sparkline=false&price_change_percentage=7d`;
+    try {
+      const res = await fetch(url);
+      if(!res.ok) throw new Error("خطا در دریافت داده‌ها");
+      const data = await res.json();
+      return data;
+    } catch (e) {
+      console.error(e);
+      return [];
+    }
+  }
+
+  async function fetchAll() {
+    document.getElementById("loading").textContent = `در حال دریافت صفحه ${currentPage} از ${totalPages} ...`;
+    while(currentPage <= totalPages) {
+      const coins = await fetchPage(currentPage);
+      allCoins = allCoins.concat(coins);
+      document.getElementById("loading").textContent = `در حال دریافت صفحه ${currentPage} از ${totalPages} ...`;
+      currentPage++;
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    showTable();
+    enableDownloadButtons();
+  }
+
+  function showTable() {
+  const tbody = document.querySelector("#coins-table tbody");
+  tbody.innerHTML = "";
+  allCoins.forEach((coin, idx) => {
+    const marketCap = coin.market_cap ? coin.market_cap.toLocaleString() : "نامشخص";
+    const price = coin.current_price ? coin.current_price.toLocaleString() : "نامشخص";
+    const volume = coin.total_volume ? coin.total_volume.toLocaleString() : "نامشخص";
+    const change24h = coin.price_change_percentage_24h?.toFixed(2) ?? "نامشخص";
+    const change7d = coin.price_change_percentage_7d_in_currency?.toFixed(2) ?? "نامشخص";
+
+    // رنگ برای تغییرات
+    const color24h = change24h === "نامشخص" ? "#eee" : (change24h >= 0 ? "limegreen" : "red");
+    const color7d = change7d === "نامشخص" ? "#eee" : (change7d >= 0 ? "limegreen" : "red");
+
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${idx + 1}</td>
+      <td>${coin.symbol.toUpperCase()}</td>
+      <td>$${marketCap}</td>
+      <td>$${price}</td>
+      <td>$${volume}</td>
+      <td style="color:${color24h}">${change24h}%</td>
+      <td style="color:${color7d}">${change7d}%</td>
+    `;
+    tbody.appendChild(row);
+  });
+  document.getElementById("loading").style.display = "none";
+  document.getElementById("coins-table").style.display = "table";
+}
+  function enableDownloadButtons() {
+    document.getElementById("download-txt").disabled = false;
+    document.getElementById("download-csv").disabled = false;
+    document.getElementById("download-pairs-txt").disabled = false;
+  }
+
+  function downloadTXT() {
+    let txtContent = "ردیف\tنماد\tنام کامل\tمارکت کپ (دلار)\tقیمت فعلی (دلار)\tحجم ۲۴ساعته\tتغییر ۲۴ساعته (%)\tتغییر ۷ روزه (%)\n";
+    allCoins.forEach((coin, idx) => {
+      const marketCap = coin.market_cap ? coin.market_cap.toLocaleString() : "نامشخص";
+      const price = coin.current_price ? coin.current_price.toLocaleString() : "نامشخص";
+      const volume = coin.total_volume ? coin.total_volume.toLocaleString() : "نامشخص";
+      const change24h = coin.price_change_percentage_24h?.toFixed(2) ?? "نامشخص";
+      const change7d = coin.price_change_percentage_7d_in_currency?.toFixed(2) ?? "نامشخص";
+
+      txtContent += `${idx + 1}\t${coin.symbol.toUpperCase()}\t${coin.name}\t$${marketCap}\t$${price}\t$${volume}\t${change24h}%\t${change7d}%\n`;
+    });
+    const blob = new Blob([txtContent], {type: "text/plain;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    triggerDownload(url, "top_500_coins.txt");
+  }
+
+  function downloadCSV() {
+    let csvContent = `"ردیف","نماد","نام کامل","مارکت کپ (دلار)","قیمت فعلی (دلار)","حجم ۲۴ساعته","تغییر ۲۴ساعته (%)","تغییر ۷ روزه (%)"\n`;
+    allCoins.forEach((coin, idx) => {
+      const marketCap = coin.market_cap ? coin.market_cap.toLocaleString() : "نامشخص";
+      const price = coin.current_price ? coin.current_price.toLocaleString() : "نامشخص";
+      const volume = coin.total_volume ? coin.total_volume.toLocaleString() : "نامشخص";
+      const change24h = coin.price_change_percentage_24h?.toFixed(2) ?? "نامشخص";
+      const change7d = coin.price_change_percentage_7d_in_currency?.toFixed(2) ?? "نامشخص";
+
+      csvContent += `"${idx + 1}","${coin.symbol.toUpperCase()}","${coin.name}","$${marketCap}","$${price}","${volume}","${change24h}%","${change7d}%"\n`;
+    });
+    const blob = new Blob([csvContent], {type: "text/csv;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    triggerDownload(url, "top_500_coins.csv");
+  }
+
+  function downloadPairsTXT() {
+    let txtContent = "";
+    allCoins.forEach(coin => {
+      txtContent += `"${coin.symbol.toUpperCase()}USDT",\n`;
+    });
+    const blob = new Blob([txtContent], {type: "text/plain;charset=utf-8"});
+    const url = URL.createObjectURL(blob);
+    triggerDownload(url, "pairs_list.txt");
+  }
+
+  function triggerDownload(url, filename) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  document.getElementById("download-txt").addEventListener("click", downloadTXT);
+  document.getElementById("download-csv").addEventListener("click", downloadCSV);
+  document.getElementById("download-pairs-txt").addEventListener("click", downloadPairsTXT);
+
+  fetchAll();
+</script>
+
+</body>
+</html>
