@@ -51,7 +51,6 @@ button:hover { background:#005ad1; }
 
 <h1>تحلیل زنده چند تایم‌فریم + فیبوناچی</h1>
 
-<!-- لینک برگشت به صفحه اصلی -->
 <div id="homeLink" style="margin: 20px; text-align: center;">
   <a href="index.html" 
      style="color:#0ff; font-size:16px; font-weight:bold; text-decoration:none;">
@@ -127,10 +126,8 @@ let currentFiboTF = '4h'; // مقدار پیش‌فرض
 
 // === ابزارهای هشدار جدید ===
 let isCrossoverActive = false;
-// آدرس یک فایل صوتی که هنگام هشدار پخش می‌شود
 const alertSound = new Audio('https://s3.tradingview.com/static/notify/notification.mp3');
 
-// 1. درخواست مجوز اعلان‌ها
 function requestNotificationPermission() {
     if ('Notification' in window) {
         if (Notification.permission !== 'granted' && Notification.permission !== 'denied') {
@@ -139,7 +136,6 @@ function requestNotificationPermission() {
     }
 }
 
-// 2. هشدار صوتی
 function playAudio() {
     try {
         alertSound.currentTime = 0; 
@@ -149,15 +145,12 @@ function playAudio() {
     }
 }
 
-// 3. لرزش (ویبره)
 function vibrateDevice() {
     if ('vibrate' in navigator) {
-        // الگوی لرزش: ۲۰۰ میلی‌ثانیه روشن، ۱۰۰ خاموش، ۲۰۰ روشن
         navigator.vibrate([200, 100, 200]);
     }
 }
 
-// 4. اعلان دسکتاپ (نوتیفیکیشن)
 function sendDesktopNotification(title, body) {
     if ('Notification' in window && Notification.permission === 'granted') {
         new Notification(title, { 
@@ -168,18 +161,14 @@ function sendDesktopNotification(title, body) {
     }
 }
 
-// 5. بررسی کراس باند میانی و اجرای هشدارها
 function checkForBollingerCrossoverAlert(currentClose, prevClose, midBand, interval) {
     let alertMessage = null;
     const title = `${currentSymbol} ${interval} - هشدار کراس باند میانی`;
 
-    // 1. کراس به سمت بالا (صعودی): کلوز قبلی زیر باند میانی بود و کلوز فعلی بالای آن است
     const bullishCrossover = (prevClose < midBand) && (currentClose > midBand);
-    
-    // 2. کراس به سمت پایین (نزولی): کلوز قبلی بالای باند میانی بود و کلوز فعلی زیر آن است
     const bearishCrossover = (prevClose > midBand) && (currentClose < midBand);
 
-    if (midBand === null) return; // اگر باند میانی محاسبه نشده باشد، ادامه نده
+    if (midBand === null) return; 
 
     if (bullishCrossover) {
         alertMessage = `⬆️ کراس صعودی: کندل به بالای باند میانی (${midBand.toFixed(5)}) بسته شد.`;
@@ -187,23 +176,19 @@ function checkForBollingerCrossoverAlert(currentClose, prevClose, midBand, inter
         alertMessage = `⬇️ کراس نزولی: کندل به زیر باند میانی (${midBand.toFixed(5)}) بسته شد.`;
     }
 
-    // اگر شرط هشدار برقرار بود و هشدار فعال دیگری نداشتیم
     if (alertMessage && !isCrossoverActive) {
         isCrossoverActive = true;
         
-        // --- اجرای همه هشدارها ---
         playAudio();
         vibrateDevice();
         sendDesktopNotification(title, alertMessage);
 
-        // هشدار بصری روی صفحه
         const statusEl = document.getElementById('crossoverStatus');
         if (statusEl) {
             statusEl.innerHTML = `🚨 **ALERT:** ${alertMessage} 🚨`;
-            statusEl.classList.add(bullishCrossover ? 'buy' : 'sell'); // سبز برای صعودی، قرمز برای نزولی
+            statusEl.classList.add(bullishCrossover ? 'buy' : 'sell');
         }
         
-        // پس از ۶۰ ثانیه، وضعیت هشدار را ریست می‌کنیم تا هشدارهای جدید فعال شوند
         setTimeout(() => {
             isCrossoverActive = false;
             if (statusEl) {
@@ -218,7 +203,6 @@ function checkForBollingerCrossoverAlert(currentClose, prevClose, midBand, inter
 
 async function fetchPrices(symbol, interval="60m"){
   try{
-    // برای محاسبه کراس به دو کندل آخر نیاز داریم، پس limit را حداقل روی 15 می‌گذاریم
     const url=`https://api.mexc.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=200`; 
     const proxy="https://corsproxy.io/?";
     const res=await fetch(proxy+encodeURIComponent(url));
@@ -326,7 +310,6 @@ async function getSymbolData(symbol, interval){
   if(!raw||raw.length===0) return null;
   const ha=convertHA(raw);
   
-  // کلوز کندل فعلی و کندل قبلی را از داده خام استخراج می‌کنیم
   const price=raw.at(-1)?.close;
   const prevClose=raw.at(-2)?.close;
   
@@ -352,7 +335,6 @@ async function getSymbolData(symbol, interval){
     buy=price>latest.bollMid && latest.rsi>latest.rsiMA && prevcci<0 && latest.cci>0;
     sell=price<latest.bollMid && latest.rsi<latest.rsiMA && prevcci>0 && latest.cci<0;
   }
-  // اضافه کردن prevClose برای استفاده در هشدار
   return {...latest, symbol, price, prevClose, buySignal:buy, sellSignal:sell}; 
 }
 
@@ -416,13 +398,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     buildReversedTable();
     updateReversedTable();
+    createFiboTable(); // جدول فیبو را یکبار بساز
     updateFibo();
 });
 
 // به‌روزرسانی خودکار
 setInterval(updateReversedTable,30000);
 
-//================ جدول فیبوناچی =================
+//================ جدول فیبوناچی (با منطق جدید) =================
 function getColorByLevel(lvl){
   if(lvl===0.5) return "white";
   if(lvl>0.5){ const t=(lvl-0.5)/0.5; const r=255,g=Math.floor(255-t*155),b=Math.floor(255-t*155); return `rgb(${r},${g},${b})`; }
@@ -444,39 +427,100 @@ function createFiboTable(){
 }
 
 async function updateFibo(){
-  const tf = currentFiboTF; // استفاده از متغیر سراسری
+  const tf = currentFiboTF; 
   const symbol=document.getElementById("symbolSelect").value;
-  let limit=144;
-  if(tf==="1d") limit=144;
   
-  // به‌روزرسانی نمایش طول دوره
+  // تعیین limit بر اساس دکمه‌های HTML
+  const activeBtn = document.querySelector(`.fibo-tf-selector button[data-tf="${tf}"].active`);
+  let limit = activeBtn ? parseInt(activeBtn.getAttribute('data-limit')) : 200; // پیش‌فرض 200
   
   const proxy="https://corsproxy.io/?";
   const url=`https://api.mexc.com/api/v3/klines?symbol=${symbol}&interval=${tf}&limit=${limit}`;
-  document.getElementById("statusFibo").textContent="⏳ در حال دریافت داده‌ها...";
+  document.getElementById("statusFibo").textContent=`⏳ در حال دریافت داده‌های ${tf} (${limit} کندل)...`;
   
   try{
     const res=await fetch(proxy+encodeURIComponent(url));
     const data=await res.json();
+    
     if(!Array.isArray(data)||data.length<2) throw new Error("داده کافی یافت نشد");
+    
     const levels=[0,0.236,0.382,0.5,0.618,0.786,1];
+    
+    // استخراج قیمت‌های High و Low به صورت آرایه از API
     const highsC=data.map(d=>parseFloat(d[2]));
     const lowsC=data.map(d=>parseFloat(d[3]));
-    const highC=Math.max(...highsC);
-    const lowC=Math.min(...lowsC);
+    
+    let highC=Math.max(...highsC);
+    let lowC=Math.min(...lowsC);
+
+    // --- منطق جدید برای جلوگیری از High و Low در یک کندل ---
+    
+    let highIndex = -1;
+    let lowIndex = -1;
+    
+    // یافتن اندیس (شماره کندل) مربوط به High و Low
+    // از انتها شروع می‌کنیم تا جدیدترین وقوع را بگیریم
+    for (let i = data.length - 1; i >= 0; i--) {
+        if (highIndex === -1 && parseFloat(data[i][2]) === highC) {
+            highIndex = i;
+        }
+        if (lowIndex === -1 && parseFloat(data[i][3]) === lowC) {
+            lowIndex = i;
+        }
+        if (highIndex !== -1 && lowIndex !== -1) {
+            break; 
+        }
+    }
+    
+    // اگر High و Low در یک کندل قرار داشتند
+    if (highIndex === lowIndex && highIndex !== -1) {
+        
+        // ما Low را نادیده گرفته و Low جدید را از کندل‌های باقی‌مانده پیدا می‌کنیم
+        // تمام High و Low های دیگر را به جز High/Low کندل فعلی در نظر می‌گیریم.
+        let filteredPrices = [];
+        for (let i = 0; i < data.length; i++) {
+            if (i !== highIndex) {
+                 filteredPrices.push(parseFloat(data[i][3])); // Lows
+            }
+        }
+        
+        if (filteredPrices.length > 0) {
+            lowC = Math.min(...filteredPrices); // Low جدید را از میان سایر کندل‌ها پیدا کن.
+        } else {
+            // اگر بعد از فیلتر، داده‌ای نماند یا فقط یک کندل باشد، خطا ایجاد کن
+            lowC = highC; 
+        }
+    }
+    
+    // -----------------------------------------------------------
+    
     const diffC=highC-lowC;
+    
+    // اگر اختلاف صفر بود، سطوح را نمایش نده
+    if (diffC === 0) {
+        levels.forEach(lvl => {
+            const td=document.getElementById("lvl_"+lvl.toString().replace(".","_"));
+            if(td) td.textContent = "N/A - Flat Range";
+        });
+        document.getElementById("statusFibo").textContent=`⚠️ بازه نوسان ${tf} صفر است.`;
+        return;
+    }
+    
     const lastClose=parseFloat(data[data.length-1][4]);
     const prevClose=parseFloat(data[data.length-2][4]);
     
     levels.forEach(lvl=>{
       const price=highC-diffC*lvl;
       let mark="";
-      if(prevClose<price && lastClose>price) mark="✅";
-      else if(prevClose>price && lastClose<price) mark="❌";
+      // بررسی کراس خط فیبوناچی
+      if(prevClose<price && lastClose>price) mark="⬆️"; // کراس صعودی
+      else if(prevClose>price && lastClose<price) mark="⬇️"; // کراس نزولی
+      
       const td=document.getElementById("lvl_"+lvl.toString().replace(".","_"));
-      td.textContent=price.toFixed(6)+" "+mark;
+      if(td) td.innerHTML = `${price.toFixed(6)} ${mark}`;
     });
-    document.getElementById("statusFibo").textContent=`✅ داده‌ها بروز شدند: ${new Date().toLocaleTimeString()}`;
+    
+    document.getElementById("statusFibo").textContent=`✅ داده‌های ${tf} (${limit} کندل) بروز شدند: ${new Date().toLocaleTimeString()}`;
   }catch(err){
     console.error(err);
     document.getElementById("statusFibo").textContent="❌ خطا در دریافت داده یا محاسبه فیبوناچی.";
@@ -504,6 +548,13 @@ fiboTfSelector.addEventListener('click', (e) => {
     }
 });
 // === پایان منطق جدید ===
+
+
+// اطمینان از مقداردهی اولیه currentFiboTF در بارگذاری
+const initialActiveBtn = document.querySelector('.fibo-tf-selector button.active');
+if (initialActiveBtn) {
+    currentFiboTF = initialActiveBtn.getAttribute('data-tf');
+}
 
 
 createFiboTable();
