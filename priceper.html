@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>قیمت‌های لحظه‌ای MEXC با به‌روزرسانی خودکار</title>
+    <style>
+        /* (استایل ها برای خوانایی حفظ شده اند) */
+        body {
+            font-family: Tahoma, Arial, sans-serif;
+            margin: 20px;
+            background-color: #f4f4f9;
+            color: #333;
+            text-align: center;
+        }
+        table {
+            width: 90%;
+            margin: 30px auto;
+            border-collapse: collapse;
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+            background-color: #fff;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        th, td {
+            border: 1px solid #e0e0e0;
+            padding: 15px;
+            text-align: center;
+        }
+        th {
+            background-color: #FF5733; 
+            color: white;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        td {
+            background-color: #ffffff;
+        }
+        tr:nth-child(even) td {
+            background-color: #f9f9f9;
+        }
+        tr:hover td {
+            background-color: #ffeadf;
+        }
+        .currency-name {
+            font-weight: bold;
+            text-align: right;
+            color: #d9401f;
+        }
+        .loading {
+            padding: 20px;
+            color: #ff9800;
+            font-size: 1.2em;
+        }
+        .error {
+            padding: 20px;
+            color: #f44336;
+            font-size: 1.2em;
+        }
+        .current-price {
+            font-weight: bold;
+            color: #1a7e2b;
+        }
+        .updated {
+            transition: background-color 0.5s ease;
+            background-color: #e9ff78 !important; 
+        }
+    </style>
+</head>
+<body>
+
+    <h2>⚡️ قیمت‌های به‌روز ارزها از MEXC (به‌روزرسانی هر ۱ دقیقه)</h2>
+<div id="homeLink" style="margin: 20px; text-align: center;">
+  <a href="index.html" 
+     style="color:#0ff; font-size:16px; font-weight:bold; text-decoration:none;">
+برگشت به صفحه اصلی
+</a>
+</div>
+    <table id="currencyTable">
+        <thead>
+            <tr>
+                <th>نام ارز</th>
+                <th>قیمت فعلی (USDT)</th>
+                <th>۲۵٪ پایین‌تر</th>
+                <th>۵۰٪ پایین‌تر</th>
+            </tr>
+        </thead>
+        <tbody>
+            </tbody>
+    </table>
+    
+    <div id="status" style="margin-top: 15px; font-size: 0.9em; color: #555;">درحال بارگذاری اولیه...</div>
+
+    <script>
+        // --- توابع و متغیرهای ثابت ---
+        
+        async function fetchPrices(symbol, interval = "1m") {
+            try {
+                const url = `https://api.mexc.com/api/v3/klines?symbol=${symbol}&interval=${interval}&limit=1`;
+                const proxy = "https://corsproxy.io/?";
+                
+                const res = await fetch(proxy + encodeURIComponent(url));
+                const data = await res.json();
+                
+                if (data.msg || !data.length) {
+                    return null;
+                }
+                
+                const lastKLine = data[data.length - 1];
+                return parseFloat(lastKLine[4]);
+            } catch (e) {
+                console.error(`خطا در واکشی داده برای ${symbol}:`, e);
+                return null;
+            }
+        }
+
+        function formatPrice(price) {
+            if (price === 0 || price === null || isNaN(price)) {
+                return 'N/A';
+            }
+            
+            let decimalPlaces;
+            if (price > 1) {
+                decimalPlaces = 3;
+            } else if (price > 0.0001) {
+                decimalPlaces = 5;
+            } else {
+                decimalPlaces = 8;
+            }
+
+            return price.toFixed(decimalPlaces);
+        }
+
+        const symbols = [
+            "BLUMUSDT", "ETHUSDT", "SOLUSDT", "SUIUSDT", "XRPUSDT", 
+            "NEARUSDT", "CAKEUSDT", "ASTERUSDT", "ADAUSDT", "CRVUSDT", 
+            "XLMUSDT", "DOGEUSDT", "TRXUSDT", "PUMPUSDT", "TONUSDT"
+        ];
+        
+        const tableBody = document.querySelector('#currencyTable tbody');
+        const statusElement = document.getElementById('status');
+        let isInitialized = false; 
+
+        // --- تابع اصلی برای واکشی و به‌روزرسانی ---
+
+        async function loadAllPrices() {
+            statusElement.textContent = `درحال به‌روزرسانی قیمت‌ها... (${new Date().toLocaleTimeString('fa-IR')})`;
+            
+            const pricePromises = symbols.map(symbol => fetchPrices(symbol, "1m"));
+            const allPrices = await Promise.all(pricePromises);
+
+            if (!isInitialized) {
+                // فاز ۱: ساختار اولیه جدول را می‌سازد (فقط یکبار)
+                tableBody.innerHTML = ''; 
+                
+                symbols.forEach((symbol, index) => {
+                    const row = tableBody.insertRow();
+                    row.id = `row-${symbol}`;
+
+                    // نام ارز (Cell 0) - تغییر اینجا اعمال شده است
+                    const nameCell = row.insertCell();
+                    nameCell.className = 'currency-name';
+                    
+                    // **خط اصلاح شده:** حذف "USDT" از نام نمایش داده شده.
+                    nameCell.textContent = symbol.replace('USDT', ''); 
+                    // ---------------------------------------------
+
+                    // قیمت فعلی (Cell 1)
+                    row.insertCell().className = 'current-price';
+
+                    // ۲۵٪ پایین‌تر (Cell 2)
+                    row.insertCell();
+
+                    // ۵۰٪ پایین‌تر (Cell 3)
+                    row.insertCell();
+                });
+                isInitialized = true;
+            }
+
+            // فاز ۲: به‌روزرسانی داده‌ها در سطرها (هر دقیقه)
+            symbols.forEach((symbol, index) => {
+                const currentPrice = allPrices[index]; 
+                const price25 = currentPrice ? currentPrice * 0.75 : null;
+                const price50 = currentPrice ? currentPrice * 0.50 : null;
+                
+                const row = document.getElementById(`row-${symbol}`);
+                if (row) {
+                    const cells = row.getElementsByTagName('td');
+                    
+                    // به‌روزرسانی Cell 1 (قیمت فعلی)
+                    cells[1].textContent = formatPrice(currentPrice);
+                    
+                    // به‌روزرسانی Cell 2 (۲۵٪)
+                    cells[2].textContent = formatPrice(price25);
+                    
+                    // به‌روزرسانی Cell 3 (۵۰٪)
+                    cells[3].textContent = formatPrice(price50);
+                    
+                    // افکت بصری به‌روزرسانی
+                    row.classList.add('updated');
+                    setTimeout(() => {
+                        row.classList.remove('updated');
+                    }, 500); 
+                }
+            });
+
+            statusElement.textContent = `آخرین به‌روزرسانی موفق: ${new Date().toLocaleTimeString('fa-IR')}`;
+        }
+
+        // --- اجرای اولیه و تنظیم حلقه‌ی به‌روزرسانی ---
+        
+        loadAllPrices();
+
+        // تنظیم به‌روزرسانی خودکار هر ۶۰ ثانیه (۱ دقیقه)
+        const intervalId = setInterval(loadAllPrices, 60000); 
+
+        window.addEventListener('beforeunload', () => {
+            clearInterval(intervalId);
+        });
+    </script>
+
+</body>
+</html>
