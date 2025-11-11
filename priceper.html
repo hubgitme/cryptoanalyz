@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>قیمت‌های لحظه‌ای و ۳۰ روز قبل از MEXC (نسخه نهایی)</title>
+    <title>قیمت‌های لحظه‌ای و تغییر ۳۰ روزه (MEXC)</title>
     <style>
-        /* (استایل ها بدون تغییر حفظ شده اند) */
         body {
             font-family: Tahoma, Arial, sans-serif;
             margin: 20px;
@@ -14,7 +13,7 @@
             text-align: center;
         }
         table {
-            width: 95%; 
+            width: 98%; /* عرض جدول کمی بیشتر شد */
             margin: 30px auto;
             border-collapse: collapse;
             box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
@@ -24,7 +23,7 @@
         }
         th, td {
             border: 1px solid #e0e0e0;
-            padding: 12px 10px;
+            padding: 12px 8px; /* پدینگ کمتر برای جایگیری ستون جدید */
             text-align: center;
         }
         th {
@@ -52,14 +51,23 @@
             transition: background-color 0.5s ease;
             background-color: #e9ff78 !important; 
         }
-        .status-cell {
+        /* کلاس‌های جدید برای نمایش تغییرات درصدی */
+        .change-up {
+            font-weight: bold;
+            color: #1a7e2b; /* سبز */
+        }
+        .change-down {
+            font-weight: bold;
+            color: #c0392b; /* قرمز */
+        }
+        .change-flat {
             color: #6c757d;
         }
     </style>
 </head>
 <body>
 
-    <h2>📈 قیمت‌های لحظه‌ای و ۳۰ روز قبل (MEXC - به‌روزرسانی ۱ دقیقه‌ای)</h2>
+    <h2>📈 قیمت‌های لحظه‌ای و تغییر ۳۰ روزه (MEXC - به‌روزرسانی ۱ دقیقه‌ای)</h2>
 
     <table id="currencyTable">
         <thead>
@@ -68,7 +76,8 @@
                 <th>قیمت فعلی (USDT)</th>
                 <th>۲۵٪ پایین‌تر</th>
                 <th>۵۰٪ پایین‌تر</th>
-                <th>قیمت ۳۰ روز قبل (کندل روزانه)</th>
+                <th>قیمت ۳۰ روز قبل</th>
+                <th>تغییر ۳۰ روزه (%)</th>
             </tr>
         </thead>
         <tbody>
@@ -81,7 +90,7 @@
         // --- توابع و متغیرهای ثابت ---
         
         const symbols = [
-                      "BLUMUSDT",  "SOLUSDT", "SUIUSDT", "XRPUSDT", 
+            "BLUMUSDT",  "SOLUSDT", "SUIUSDT", "XRPUSDT", 
             "NEARUSDT", "CAKEUSDT",  "TONUSDT","ASTERUSDT", "ADAUSDT", "CRVUSDT", 
             "XLMUSDT", "TRXUSDT",  "DOGEUSDT",  "WLFIUSDT","PUMPUSDT"
         ];
@@ -89,20 +98,16 @@
         const tableBody = document.querySelector('#currencyTable tbody');
         const statusElement = document.getElementById('status');
         let isInitialized = false; 
+        const CORS_PROXY = "https://corsproxy.io/?"; // پروکسی اصلی
 
         /**
          * تابع: محاسبه دقیق Timestamp برای ۳۱ روز قبل در 00:00:00 UTC.
-         * @param {number} currentTime - زمان فعلی به میلی‌ثانیه.
-         * @returns {number} Timestamp دقیق ۳۱ روز قبل در 00:00:00 UTC.
+         * این زمان به عنوان startTime برای کندل‌های روزانه استفاده می‌شود.
          */
         function getHistoricalStartTime(currentTime) {
             const date = new Date(currentTime);
-            // برای اطمینان، 31 روز به عقب می‌رویم
             date.setDate(date.getDate() - 31); 
-            
-            // تنظیم زمان به نیمه‌شب UTC (شروع روز)
             date.setUTCHours(0, 0, 0, 0); 
-
             return date.getTime();
         }
 
@@ -111,16 +116,14 @@
          */
         async function getCurrentPrice(symbol) {
             try {
-                const url = `https://api.mexc.com/api/v3/klines?symbol=${symbol}&interval=1m&limit=1`;
-                const proxy = "https://corsproxy.io/?";
-                const res = await fetch(proxy + encodeURIComponent(url));
+                const url = `${CORS_PROXY}${encodeURIComponent(`https://api.mexc.com/api/v3/klines?symbol=${symbol}&interval=1m&limit=1`)}`;
+                const res = await fetch(url);
                 const data = await res.json();
                 
                 if (data.msg || !Array.isArray(data) || data.length === 0) {
                     return null;
                 }
                 
-                // قیمت بسته شدن (Close Price) آخرین کندل
                 return parseFloat(data[0][4]);
 
             } catch (e) {
@@ -131,35 +134,40 @@
 
         /**
          * تابع برای دریافت قیمت بسته شدن کندل ۳۰ روز قبل (1d).
-         * با استفاده از startTime و limit برای اطمینان بیشتر.
          */
         async function getThirtyDaysAgoPrice(symbol, startTime) {
             try {
                 // درخواست 32 کندل روزانه که از 31 روز قبل شروع می‌شوند.
-                // این تضمین می‌کند که کندل روز 30 روز قبل در لیست باشد.
-                const url = `https://api.mexc.com/api/v3/klines?symbol=${symbol}&interval=1d&startTime=${startTime}&limit=32`;
-                const proxy = "https://corsproxy.io/?";
-                const res = await fetch(proxy + encodeURIComponent(url));
+                const mexcUrl = `https://api.mexc.com/api/v3/klines?symbol=${symbol}&interval=1d&startTime=${startTime}&limit=32`;
+                const url = `${CORS_PROXY}${encodeURIComponent(mexcUrl)}`;
+                const res = await fetch(url);
                 const data = await res.json();
                 
                 if (data.msg || !Array.isArray(data) || data.length < 30) {
-                    return null; // اگر داده کافی نبود، برگردان N/A
+                    return null; 
                 }
                 
-                // کندل روز 30 روز قبل، در لیست دریافت شده با اندیس نزدیک به ابتدا است.
-                // ما کندل دوم از انتها را می‌گیریم (اگر 32 کندل دریافت شده باشد، اندیس 1)
-                // اگر 31 کندل دریافت شده باشد، اندیس 0 کندل 31 روز قبل است، اندیس 1 کندل 30 روز قبل.
-                // بهتر است از اندیس 1 استفاده کنیم.
+                // قیمت بسته شدن کندل روز 30 روز قبل
                 const price = data[data.length - 31] ? parseFloat(data[data.length - 31][4]) : null;
                 
-                // اگر قیمت لحظه‌ای به اشتباه برگشت داده شود، باید در اندیس آخر باشد. 
-                // ما مطمئن می‌شویم که اندیس مورد نظر را برداریم.
                 return price;
 
             } catch (e) {
                 console.error(`خطا در واکشی قیمت تاریخی ${symbol}:`, e);
                 return null;
             }
+        }
+
+        /**
+         * تابع برای محاسبه درصد تغییر
+         */
+        function calculatePercentageChange(currentPrice, historicalPrice) {
+            if (currentPrice === null || historicalPrice === null || historicalPrice === 0) {
+                return null;
+            }
+            // (قیمت فعلی - قیمت قدیمی) / قیمت قدیمی * 100
+            const change = ((currentPrice - historicalPrice) / historicalPrice) * 100;
+            return change.toFixed(2); // دقت دو رقم اعشار
         }
 
         function formatPrice(price) {
@@ -183,7 +191,6 @@
 
         async function loadAllPrices() {
             const currentTime = Date.now(); 
-            // زمان 31 روز قبل در نیمه‌شب UTC
             const historicalStartTime = getHistoricalStartTime(currentTime); 
             
             statusElement.textContent = `درحال به‌روزرسانی قیمت‌ها... (${new Date().toLocaleTimeString('fa-IR')})`;
@@ -208,10 +215,11 @@
                     nameCell.className = 'currency-name';
                     nameCell.textContent = symbol.replace('USDT', ''); 
                     
-                    row.insertCell().className = 'current-price'; // Cell 1
-                    row.insertCell(); // Cell 2
-                    row.insertCell(); // Cell 3
-                    row.insertCell().className = 'status-cell'; // Cell 4 
+                    row.insertCell().className = 'current-price'; // Cell 1 (قیمت فعلی)
+                    row.insertCell(); // Cell 2 (25% پایین‌تر)
+                    row.insertCell(); // Cell 3 (50% پایین‌تر)
+                    row.insertCell().className = 'status-cell'; // Cell 4 (قیمت 30 روز قبل)
+                    row.insertCell().className = 'change-cell'; // **Cell 5 (تغییر 30 روزه)**
                 });
                 isInitialized = true;
             }
@@ -224,6 +232,8 @@
                 const price25 = currentPrice ? currentPrice * 0.75 : null;
                 const price50 = currentPrice ? currentPrice * 0.50 : null;
                 
+                const percentChange = calculatePercentageChange(currentPrice, historicalPrice);
+                
                 const row = document.getElementById(`row-${symbol}`);
                 if (row) {
                     const cells = row.getElementsByTagName('td');
@@ -231,9 +241,25 @@
                     cells[1].textContent = formatPrice(currentPrice);
                     cells[2].textContent = formatPrice(price25);
                     cells[3].textContent = formatPrice(price50);
-                    
-                    // به‌روزرسانی قیمت ۳۰ روز قبل
                     cells[4].textContent = formatPrice(historicalPrice);
+                    
+                    // منطق نمایش درصد تغییر
+                    const changeCell = cells[5];
+                    if (percentChange === null) {
+                        changeCell.textContent = 'N/A';
+                        changeCell.className = 'change-flat';
+                    } else {
+                        const sign = parseFloat(percentChange) > 0 ? '+' : '';
+                        changeCell.textContent = sign + percentChange + '%';
+                        
+                        if (parseFloat(percentChange) > 0) {
+                            changeCell.className = 'change-up';
+                        } else if (parseFloat(percentChange) < 0) {
+                            changeCell.className = 'change-down';
+                        } else {
+                            changeCell.className = 'change-flat';
+                        }
+                    }
                     
                     row.classList.add('updated');
                     setTimeout(() => {
