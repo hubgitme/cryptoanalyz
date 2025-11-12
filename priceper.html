@@ -13,7 +13,7 @@
             text-align: center;
         }
         table {
-            width: 98%; /* عرض جدول کمی بیشتر شد */
+            width: 98%; 
             margin: 30px auto;
             border-collapse: collapse;
             box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
@@ -23,7 +23,7 @@
         }
         th, td {
             border: 1px solid #e0e0e0;
-            padding: 12px 8px; /* پدینگ کمتر برای جایگیری ستون جدید */
+            padding: 12px 8px; 
             text-align: center;
         }
         th {
@@ -78,6 +78,7 @@
                 <th>۵۰٪ پایین‌تر</th>
                 <th>Close 30 روز قبل</th>
                 <th>تغییر ۳۰ روزه (%)</th>
+                <th>لینک چارت</th> 
             </tr>
         </thead>
         <tbody>
@@ -98,11 +99,10 @@
         const tableBody = document.querySelector('#currencyTable tbody');
         const statusElement = document.getElementById('status');
         let isInitialized = false; 
-        const CORS_PROXY = "https://corsproxy.io/?"; // پروکسی اصلی
+        const CORS_PROXY = "https://corsproxy.io/?"; 
 
         /**
          * تابع: محاسبه دقیق Timestamp برای ۳۱ روز قبل در 00:00:00 UTC.
-         * این زمان به عنوان startTime برای کندل‌های روزانه استفاده می‌شود.
          */
         function getHistoricalStartTime(currentTime) {
             const date = new Date(currentTime);
@@ -165,9 +165,8 @@
             if (currentPrice === null || historicalPrice === null || historicalPrice === 0) {
                 return null;
             }
-            // (قیمت فعلی - قیمت قدیمی) / قیمت قدیمی * 100
             const change = ((currentPrice - historicalPrice) / historicalPrice) * 100;
-            return change.toFixed(2); // دقت دو رقم اعشار
+            return change.toFixed(2); 
         }
 
         function formatPrice(price) {
@@ -186,6 +185,18 @@
 
             return price.toFixed(decimalPlaces);
         }
+
+        /**
+         * **تابع جدید برای ساخت لینک چارت تریدینگ ویو MEXC**
+         */
+        function createTradingViewLink(symbol) {
+            // ساختار کلی لینک تریدینگ ویو برای MEXC: 
+            // https://www.tradingview.com/chart/?symbol=MEXC%3A[SYMBOL]
+            const chartSymbol = 'MEXC:' + symbol;
+            const url = `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(chartSymbol)}`;
+            return `<a href="${url}" target="_blank">نمایش چارت</a>`;
+        }
+
 
         // --- تابع اصلی برای واکشی و به‌روزرسانی ---
 
@@ -219,7 +230,10 @@
                     row.insertCell(); // Cell 2 (25% پایین‌تر)
                     row.insertCell(); // Cell 3 (50% پایین‌تر)
                     row.insertCell().className = 'status-cell'; // Cell 4 (قیمت 30 روز قبل)
-                    row.insertCell().className = 'change-cell'; // **Cell 5 (تغییر 30 روزه)**
+                    row.insertCell().className = 'change-cell'; // Cell 5 (تغییر 30 روزه)
+                    
+                    // **اضافه کردن سلول جدید برای لینک چارت**
+                    row.insertCell().innerHTML = createTradingViewLink(symbol); // Cell 6 (لینک چارت)
                 });
                 isInitialized = true;
             }
@@ -261,6 +275,8 @@
                         }
                     }
                     
+                    // سلول 6 (لینک چارت) در زمان isInitialized پر شده و نیاز به به‌روزرسانی ندارد.
+                    
                     row.classList.add('updated');
                     setTimeout(() => {
                         row.classList.remove('updated');
@@ -284,4 +300,3 @@
 
 </body>
 </html>
-
