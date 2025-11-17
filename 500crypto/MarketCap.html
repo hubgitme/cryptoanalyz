@@ -20,6 +20,7 @@
       border: 1px solid #444;
       padding: 8px 12px;
       text-align: center;
+      cursor: pointer;
     }
     th {
       background: #222;
@@ -60,14 +61,14 @@
 <table id="coins-table" style="display:none;">
   <thead>
     <tr>
-      <th>ردیف</th>
-      <th>نماد</th>
-      <th>مارکت کپ</th>
-      <th>قیمت</th>
-      <th>تغییر ۲۴ساعته</th>
-      <th>تغییر ۷ روزه</th>
-      <th>تغییر ۳۰ روزه</th>
-      <th>تغییر ۱ ساله</th>
+      <th data-sort="index">ردیف</th>
+      <th data-sort="symbol">نماد</th>
+      <th data-sort="market_cap">مارکت کپ</th>
+      <th data-sort="price">قیمت</th>
+      <th data-sort="c24">۲۴ساعته</th>
+      <th data-sort="c7">۷ روزه</th>
+      <th data-sort="c30">۳۰ روزه</th>
+      <th data-sort="c1y">۱ساله</th>
     </tr>
   </thead>
   <tbody></tbody>
@@ -79,14 +80,18 @@
   const totalPages = Math.ceil(totalCoins / perPage);
   let allCoins = [];
   let currentPage = 1;
+  let sortDirection = 1;
 
   async function fetchPage(page) {
-    const url = `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${perPage}&page=${page}&sparkline=false&price_change_percentage=24h,7d,30d,1y`;
+    const url =
+      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc` +
+      `&per_page=${perPage}&page=${page}&sparkline=false` +
+      `&price_change_percentage=24h,7d,30d,1y`;
+
     try {
       const res = await fetch(url);
-      if(!res.ok) throw new Error("خطا در دریافت داده‌ها");
-      const data = await res.json();
-      return data;
+      if (!res.ok) throw new Error("خطا در دریافت داده‌ها");
+      return await res.json();
     } catch (e) {
       console.error(e);
       return [];
@@ -94,14 +99,18 @@
   }
 
   async function fetchAll() {
-    document.getElementById("loading").textContent = `در حال دریافت صفحه ${currentPage} از ${totalPages} ...`;
-    while(currentPage <= totalPages) {
+    document.getElementById("loading").textContent =
+      `در حال دریافت صفحه ${currentPage} از ${totalPages} ...`;
+
+    while (currentPage <= totalPages) {
       const coins = await fetchPage(currentPage);
       allCoins = allCoins.concat(coins);
-      document.getElementById("loading").textContent = `در حال دریافت صفحه ${currentPage} از ${totalPages} ...`;
+      document.getElementById("loading").textContent =
+        `در حال دریافت صفحه ${currentPage} از ${totalPages} ...`;
       currentPage++;
       await new Promise(r => setTimeout(r, 1200));
     }
+
     showTable();
     enableDownloadButtons();
   }
@@ -143,8 +152,33 @@
     document.getElementById("download-pairs-txt").disabled = false;
   }
 
+  // SORT
+  document.querySelectorAll("th").forEach(th => {
+    th.addEventListener("click", () => sortTable(th.dataset.sort));
+  });
+
+  function sortTable(key) {
+    sortDirection *= -1;
+
+    allCoins.sort((a, b) => {
+      switch (key) {
+        case "symbol": return a.symbol.localeCompare(b.symbol) * sortDirection;
+        case "market_cap": return (a.market_cap - b.market_cap) * sortDirection;
+        case "price": return (a.current_price - b.current_price) * sortDirection;
+        case "c24": return (a.price_change_percentage_24h - b.price_change_percentage_24h) * sortDirection;
+        case "c7": return (a.price_change_percentage_7d_in_currency - b.price_change_percentage_7d_in_currency) * sortDirection;
+        case "c30": return (a.price_change_percentage_30d_in_currency - b.price_change_percentage_30d_in_currency) * sortDirection;
+        case "c1y": return (a.price_change_percentage_1y_in_currency - b.price_change_percentage_1y_in_currency) * sortDirection;
+        default: return 0;
+      }
+    });
+
+    showTable();
+  }
+
+  // DOWNLOAD TXT
   function downloadTXT() {
-    let txt = "ردیف\tنماد\tمارکت کپ\tقیمت\t۲۴ساعته\t۷روزه\t۳۰روزه\t۱ساله\n";
+    let txt = "ردیف\tنماد\tمارکت کپ\tقیمت\t24h\t7d\t30d\t1y\n";
     allCoins.forEach((c, i) => {
       txt += `${i+1}\t${c.symbol.toUpperCase()}\t${c.market_cap}\t${c.current_price}\t${c.price_change_percentage_24h}\t${c.price_change_percentage_7d_in_currency}\t${c.price_change_percentage_30d_in_currency}\t${c.price_change_percentage_1y_in_currency}\n`;
     });
@@ -152,6 +186,7 @@
     triggerDownload(URL.createObjectURL(blob), "top_500_coins.txt");
   }
 
+  // DOWNLOAD CSV
   function downloadCSV() {
     let csv = `"ردیف","نماد","مارکت کپ","قیمت","24h","7d","30d","1y"\n`;
     allCoins.forEach((c, i) => {
@@ -180,4 +215,3 @@
 
 </body>
 </html>
-
