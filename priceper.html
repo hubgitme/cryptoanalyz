@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>قیمت‌های لحظه‌ای و تغییر ۳۰ روزه (MEXC)</title>
+    <title>قیمت‌های لحظه‌ای و تغییر ۷ و ۳۰ روزه (MEXC)</title>
     <style>
         body {
             font-family: Tahoma, Arial, sans-serif;
@@ -51,7 +51,6 @@
             transition: background-color 0.5s ease;
             background-color: #e9ff78 !important; 
         }
-        /* کلاس‌های جدید برای نمایش تغییرات درصدی */
         .change-up {
             font-weight: bold;
             color: #1a7e2b; /* سبز */
@@ -61,13 +60,21 @@
             color: #c0392b; /* قرمز */
         }
         .change-flat {
-            color: #6c757d;
+            color: #6c757d; /* خاکستری */
         }
     </style>
 </head>
 <body>
 
-    <h2>📈 قیمت‌های لحظه‌ای و تغییر ۳۰ روزه (MEXC - به‌روزرسانی ۱ دقیقه‌ای)</h2>
+    <h2>📈 قیمت‌های لحظه‌ای و تغییر ۷ و ۳۰ روزه (MEXC - به‌روزرسانی ۱ دقیقه‌ای)</h2>
+    
+<!-- لینک برگشت به صفحه اصلی -->
+<div id="homeLink" style="margin: 20px; text-align: center;">
+  <a href="index.html" 
+     style="color:#0ff; font-size:16px; font-weight:bold; text-decoration:none;">
+برگشت به صفحه اصلی
+</a>
+</div>
 
     <table id="currencyTable">
         <thead>
@@ -76,8 +83,13 @@
                 <th>قیمت فعلی (USDT)</th>
                 <th>۲۵٪ پایین‌تر</th>
                 <th>۵۰٪ پایین‌تر</th>
+
+                <th>Close 7 روز قبل</th>
+                <th>تغییر ۷ روزه (%)</th>
+
                 <th>Close 30 روز قبل</th>
                 <th>تغییر ۳۰ روزه (%)</th>
+
                 <th>لینک چارت</th> 
             </tr>
         </thead>
@@ -102,11 +114,11 @@
         const CORS_PROXY = "https://corsproxy.io/?"; 
 
         /**
-         * تابع: محاسبه دقیق Timestamp برای ۳۱ روز قبل در 00:00:00 UTC.
+         * تابع: محاسبه دقیق Timestamp برای n روز قبل در 00:00:00 UTC.
          */
-        function getHistoricalStartTime(currentTime) {
+        function getHistoricalStartTime(currentTime, daysAgo) {
             const date = new Date(currentTime);
-            date.setDate(date.getDate() - 31); 
+            date.setDate(date.getDate() - daysAgo); 
             date.setUTCHours(0, 0, 0, 0); 
             return date.getTime();
         }
@@ -134,6 +146,7 @@
 
         /**
          * تابع برای دریافت قیمت بسته شدن کندل ۳۰ روز قبل (1d).
+         * (منطق مشابه کد اولی: درخواست چند کندل و گرفتن ایندکس درست)
          */
         async function getThirtyDaysAgoPrice(symbol, startTime) {
             try {
@@ -147,13 +160,40 @@
                     return null; 
                 }
                 
-                // قیمت بسته شدن کندل روز 30 روز قبل
+                // قیمت بسته شدن کندل روز 30 روز قبل (مطابق کد اولیه)
                 const price = data[data.length - 31] ? parseFloat(data[data.length - 31][4]) : null;
                 
                 return price;
 
             } catch (e) {
                 console.error(`خطا در واکشی قیمت تاریخی ${symbol}:`, e);
+                return null;
+            }
+        }
+
+        /**
+         * تابع برای دریافت قیمت بسته شدن کندل ۷ روز قبل (1d).
+         * منطق مشابه ۳۰ روز: درخواست 8 کندل و گرفتن ایندکس مناسب
+         */
+        async function getSevenDaysAgoPrice(symbol, startTime) {
+            try {
+                // درخواست 8 کندل روزانه که از 7 روز قبل شروع می‌شوند.
+                const mexcUrl = `https://api.mexc.com/api/v3/klines?symbol=${symbol}&interval=1d&startTime=${startTime}&limit=8`;
+                const url = `${CORS_PROXY}${encodeURIComponent(mexcUrl)}`;
+                const res = await fetch(url);
+                const data = await res.json();
+                
+                if (data.msg || !Array.isArray(data) || data.length < 7) {
+                    return null; 
+                }
+                
+                // قیمت بسته شدن کندل روز 7 روز قبل
+                const price = data[data.length - 8] ? parseFloat(data[data.length - 8][4]) : null;
+                
+                return price;
+
+            } catch (e) {
+                console.error(`خطا در واکشی قیمت تاریخی 7 روز ${symbol}:`, e);
                 return null;
             }
         }
@@ -187,32 +227,33 @@
         }
 
         /**
-         * **تابع جدید برای ساخت لینک چارت تریدینگ ویو MEXC**
+         * تابع جدید برای ساخت لینک چارت تریدینگ ویو MEXC
          */
         function createTradingViewLink(symbol) {
-            // ساختار کلی لینک تریدینگ ویو برای MEXC: 
-            // https://www.tradingview.com/chart/?symbol=MEXC%3A[SYMBOL]
             const chartSymbol = 'MEXC:' + symbol;
             const url = `https://www.tradingview.com/chart/?symbol=${encodeURIComponent(chartSymbol)}`;
             return `<a href="${url}" target="_blank">نمایش چارت</a>`;
         }
 
-
         // --- تابع اصلی برای واکشی و به‌روزرسانی ---
 
         async function loadAllPrices() {
             const currentTime = Date.now(); 
-            const historicalStartTime = getHistoricalStartTime(currentTime); 
-            
+            const historicalStartTime30 = getHistoricalStartTime(currentTime, 31); 
+            const historicalStartTime7 = getHistoricalStartTime(currentTime, 7); 
+
             statusElement.textContent = `درحال به‌روزرسانی قیمت‌ها... (${new Date().toLocaleTimeString('fa-IR')})`;
             
             // ۱. دریافت قیمت‌های لحظه‌ای
             const currentPricePromises = symbols.map(symbol => getCurrentPrice(symbol));
             const currentPrices = await Promise.all(currentPricePromises);
             
-            // ۲. دریافت قیمت‌های ۳۰ روز قبل
-            const historicalPricePromises = symbols.map(symbol => getThirtyDaysAgoPrice(symbol, historicalStartTime));
-            const historicalPrices = await Promise.all(historicalPricePromises);
+            // ۲. دریافت قیمت‌های ۷ روز قبل و ۳۰ روز قبل
+            const sevenDayPromises = symbols.map(symbol => getSevenDaysAgoPrice(symbol, historicalStartTime7));
+            const sevenDayPrices = await Promise.all(sevenDayPromises);
+
+            const thirtyDayPromises = symbols.map(symbol => getThirtyDaysAgoPrice(symbol, historicalStartTime30));
+            const thirtyDayPrices = await Promise.all(thirtyDayPromises);
 
             if (!isInitialized) {
                 // فاز ۱: ساختار اولیه جدول (فقط یکبار)
@@ -229,11 +270,14 @@
                     row.insertCell().className = 'current-price'; // Cell 1 (قیمت فعلی)
                     row.insertCell(); // Cell 2 (25% پایین‌تر)
                     row.insertCell(); // Cell 3 (50% پایین‌تر)
-                    row.insertCell().className = 'status-cell'; // Cell 4 (قیمت 30 روز قبل)
-                    row.insertCell().className = 'change-cell'; // Cell 5 (تغییر 30 روزه)
+                    row.insertCell().className = 'status-cell'; // Cell 4 (قیمت 7 روز قبل)
+                    row.insertCell().className = 'change7-cell'; // Cell 5 (تغییر 7 روزه)
+                    
+                    row.insertCell().className = 'status30-cell'; // Cell 6 (قیمت 30 روز قبل)
+                    row.insertCell().className = 'change30-cell'; // Cell 7 (تغییر 30 روزه)
                     
                     // **اضافه کردن سلول جدید برای لینک چارت**
-                    row.insertCell().innerHTML = createTradingViewLink(symbol); // Cell 6 (لینک چارت)
+                    row.insertCell().innerHTML = createTradingViewLink(symbol); // Cell 8 (لینک چارت)
                 });
                 isInitialized = true;
             }
@@ -241,12 +285,14 @@
             // فاز ۲: به‌روزرسانی داده‌ها در سطرها (هر دقیقه)
             symbols.forEach((symbol, index) => {
                 const currentPrice = currentPrices[index]; 
-                const historicalPrice = historicalPrices[index]; 
+                const price7 = sevenDayPrices[index]; 
+                const price30 = thirtyDayPrices[index]; 
                 
                 const price25 = currentPrice ? currentPrice * 0.75 : null;
                 const price50 = currentPrice ? currentPrice * 0.50 : null;
                 
-                const percentChange = calculatePercentageChange(currentPrice, historicalPrice);
+                const percentChange7 = calculatePercentageChange(currentPrice, price7);
+                const percentChange30 = calculatePercentageChange(currentPrice, price30);
                 
                 const row = document.getElementById(`row-${symbol}`);
                 if (row) {
@@ -255,27 +301,46 @@
                     cells[1].textContent = formatPrice(currentPrice);
                     cells[2].textContent = formatPrice(price25);
                     cells[3].textContent = formatPrice(price50);
-                    cells[4].textContent = formatPrice(historicalPrice);
+                    cells[4].textContent = formatPrice(price7);
                     
-                    // منطق نمایش درصد تغییر
-                    const changeCell = cells[5];
-                    if (percentChange === null) {
-                        changeCell.textContent = 'N/A';
-                        changeCell.className = 'change-flat';
+                    // منطق نمایش درصد تغییر ۷ روزه
+                    const change7Cell = cells[5];
+                    if (percentChange7 === null) {
+                        change7Cell.textContent = 'N/A';
+                        change7Cell.className = 'change-flat';
                     } else {
-                        const sign = parseFloat(percentChange) > 0 ? '+' : '';
-                        changeCell.textContent = sign + percentChange + '%';
+                        const sign7 = parseFloat(percentChange7) > 0 ? '+' : '';
+                        change7Cell.textContent = sign7 + percentChange7 + '%';
                         
-                        if (parseFloat(percentChange) > 0) {
-                            changeCell.className = 'change-up';
-                        } else if (parseFloat(percentChange) < 0) {
-                            changeCell.className = 'change-down';
+                        if (parseFloat(percentChange7) > 0) {
+                            change7Cell.className = 'change-up';
+                        } else if (parseFloat(percentChange7) < 0) {
+                            change7Cell.className = 'change-down';
                         } else {
-                            changeCell.className = 'change-flat';
+                            change7Cell.className = 'change-flat';
+                        }
+                    }
+
+                    // قیمت و درصد 30 روزه
+                    cells[6].textContent = formatPrice(price30);
+                    const change30Cell = cells[7];
+                    if (percentChange30 === null) {
+                        change30Cell.textContent = 'N/A';
+                        change30Cell.className = 'change-flat';
+                    } else {
+                        const sign30 = parseFloat(percentChange30) > 0 ? '+' : '';
+                        change30Cell.textContent = sign30 + percentChange30 + '%';
+                        
+                        if (parseFloat(percentChange30) > 0) {
+                            change30Cell.className = 'change-up';
+                        } else if (parseFloat(percentChange30) < 0) {
+                            change30Cell.className = 'change-down';
+                        } else {
+                            change30Cell.className = 'change-flat';
                         }
                     }
                     
-                    // سلول 6 (لینک چارت) در زمان isInitialized پر شده و نیاز به به‌روزرسانی ندارد.
+                    // سلول لینک چارت (unchanged)
                     
                     row.classList.add('updated');
                     setTimeout(() => {
