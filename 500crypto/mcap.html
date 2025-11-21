@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="fa" dir="ltr">
+<head>
+  <meta charset="UTF-8" />
+  <title>۵۰۰ ارز برتر با مارکت کپ + تغییرات</title>
+  <style>
+    body {
+      font-family: Tahoma, sans-serif;
+      background-color: #121212;
+      color: #eee;
+      padding: 20px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 15px;
+      direction: rtl;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 8px 12px;
+      text-align: center;
+      cursor: pointer;
+    }
+    th {
+      background: #222;
+    }
+    tr:nth-child(even) {
+      background: #1e1e1e;
+    }
+    #loading {
+    	text-align: center;
+      font-size: 12px;
+      margin-bottom: 15px;
+    }
+    button {
+      margin: 10px 10px 10px 0;
+      padding: 8px 15px;
+      font-size: 14px;
+      cursor: pointer;
+      background-color: #333;
+      border: none;
+      color: white;
+      border-radius: 5px;
+    }
+    button:hover {
+      background-color: #555;
+    }
+    h2 { margin-top: 20px; text-align: center;}
+    a.chart-link {
+      color: #4da3ff;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    a.chart-link:hover {
+      color: #75bbff;
+    }
+  </style>
+</head>
+<body>
+
+<h2>۵۰۰ ارز برتر بازار با تغییرات ۲۴ساعته، ۷روزه، ۳۰روزه و ۱ساله</h2>
+<div id="loading">در حال دریافت داده‌ها...</div>
+
+<button id="download-txt" disabled>دانلود TXT</button>
+<button id="download-csv" disabled>دانلود CSV</button>
+<button id="download-pairs-txt" disabled>دانلود جفت ارزها (USDT)</button>
+
+<table id="coins-table" style="display:none;">
+  <thead>
+    <tr>
+      <th data-sort="index">ردیف</th>
+      <th data-sort="symbol">نماد</th>
+      <th data-sort="market_cap">مارکت کپ</th>
+      <th data-sort="price">قیمت</th>
+      <th data-sort="c24">۲۴ساعته</th>
+      <th data-sort="c7">۷ روزه</th>
+      <th data-sort="c30">۳۰ روزه</th>
+      <th data-sort="c1y">۱ساله</th>
+      <th>چارت (MEXC)</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+  const totalCoins = 500;
+  const perPage = 100;
+  const totalPages = Math.ceil(totalCoins / perPage);
+  let allCoins = [];
+  let currentPage = 1;
+  let sortDirection = 1;
+
+  async function fetchPage(page) {
+    const url =
+      `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc` +
+      `&per_page=${perPage}&page=${page}&sparkline=false` +
+      `&price_change_percentage=24h,7d,30d,1y`;
+
+    try {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("خطا در دریافت داده‌ها");
+      return await res.json();
+    } catch (e) {
+      console.error(e);
+      return [];
+    }
+  }
+
+  async function fetchAll() {
+    document.getElementById("loading").textContent =
+      `در حال دریافت صفحه ${currentPage} از ${totalPages} ...`;
+
+    while (currentPage <= totalPages) {
+      const coins = await fetchPage(currentPage);
+      allCoins = allCoins.concat(coins);
+      document.getElementById("loading").textContent =
+        `در حال دریافت صفحه ${currentPage} از ${totalPages} ...`;
+      currentPage++;
+      await new Promise(r => setTimeout(r, 1000));
+    }
+
+    showTable();
+    enableDownloadButtons();
+  }
+
+  function showTable() {
+    const tbody = document.querySelector("#coins-table tbody");
+    tbody.innerHTML = "";
+
+    allCoins.forEach((coin, idx) => {
+      const mc = coin.market_cap?.toLocaleString() ?? "-";
+      const price = coin.current_price?.toLocaleString() ?? "-";
+
+      const c24 = coin.price_change_percentage_24h?.toFixed(2) ?? "-";
+      const c7  = coin.price_change_percentage_7d_in_currency?.toFixed(2) ?? "-";
+      const c30 = coin.price_change_percentage_30d_in_currency?.toFixed(2) ?? "-";
+      const c1y = coin.price_change_percentage_1y_in_currency?.toFixed(2) ?? "-";
+
+      const symbol = coin.symbol.toUpperCase();
+      const chartURL = `https://www.tradingview.com/chart/?symbol=MEXC:${symbol}USDT`;
+
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${idx + 1}</td>
+        <td>${symbol}</td>
+        <td>$${mc}</td>
+        <td>$${price}</td>
+        <td style="color:${c24 >= 0 ? "limegreen" : "red"}">${c24}%</td>
+        <td style="color:${c7 >= 0 ? "limegreen" : "red"}">${c7}%</td>
+        <td style="color:${c30 >= 0 ? "limegreen" : "red"}">${c30}%</td>
+        <td style="color:${c1y >= 0 ? "limegreen" : "red"}">${c1y}%</td>
+        <td><a class="chart-link" href="${chartURL}" target="_blank">چارت</a></td>
+      `;
+      tbody.appendChild(row);
+    });
+
+    document.getElementById("loading").style.display = "none";
+    document.getElementById("coins-table").style.display = "table";
+  }
+
+  function enableDownloadButtons() {
+    document.getElementById("download-txt").disabled = false;
+    document.getElementById("download-csv").disabled = false;
+    document.getElementById("download-pairs-txt").disabled = false;
+  }
+
+  // SORT
+  document.querySelectorAll("th").forEach(th => {
+    th.addEventListener("click", () => sortTable(th.dataset.sort));
+  });
+
+  function sortTable(key) {
+    sortDirection *= -1;
+
+    allCoins.sort((a, b) => {
+      switch (key) {
+        case "symbol": return a.symbol.localeCompare(b.symbol) * sortDirection;
+        case "market_cap": return (a.market_cap - b.market_cap) * sortDirection;
+        case "price": return (a.current_price - b.current_price) * sortDirection;
+        case "c24": return (a.price_change_percentage_24h - b.price_change_percentage_24h) * sortDirection;
+        case "c7": return (a.price_change_percentage_7d_in_currency - b.price_change_percentage_7d_in_currency) * sortDirection;
+        case "c30": return (a.price_change_percentage_30d_in_currency - b.price_change_percentage_30d_in_currency) * sortDirection;
+        case "c1y": return (a.price_change_percentage_1y_in_currency - b.price_change_percentage_1y_in_currency) * sortDirection;
+        default: return 0;
+      }
+    });
+
+    showTable();
+  }
+
+  // DOWNLOAD TXT
+  function downloadTXT() {
+    let txt = "ردیف\tنماد\tمارکت کپ\tقیمت\t24h\t7d\t30d\t1y\n";
+    allCoins.forEach((c, i) => {
+      txt += `${i+1}\t${c.symbol.toUpperCase()}\t${c.market_cap}\t${c.current_price}\t${c.price_change_percentage_24h}\t${c.price_change_percentage_7d_in_currency}\t${c.price_change_percentage_30d_in_currency}\t${c.price_change_percentage_1y_in_currency}\n`;
+    });
+    const blob = new Blob([txt], {type: "text/plain;charset=utf-8"});
+    triggerDownload(URL.createObjectURL(blob), "top_500_coins.txt");
+  }
+
+  // DOWNLOAD CSV
+  function downloadCSV() {
+    let csv = `"ردیف","نماد","مارکت کپ","قیمت","24h","7d","30d","1y"\n`;
+    allCoins.forEach((c, i) => {
+      csv += `"${i+1}","${c.symbol.toUpperCase()}","${c.market_cap}","${c.current_price}","${c.price_change_percentage_24h}","${c.price_change_percentage_7d_in_currency}","${c.price_change_percentage_30d_in_currency}","${c.price_change_percentage_1y_in_currency}"\n`;
+    });
+    const blob = new Blob([csv], {type: "text/csv;charset=utf-8"});
+    triggerDownload(URL.createObjectURL(blob), "top_500_coins.csv");
+  }
+
+  // DOWNLOAD USDT PAIRS
+  function downloadPairsTXT() {
+    const txt = allCoins.map(c => `"${c.symbol.toUpperCase()}USDT"`).join(",\n");
+    const blob = new Blob([txt], {type: "text/plain;charset=utf-8"});
+    triggerDownload(URL.createObjectURL(blob), "pairs_list.txt");
+  }
+
+  function triggerDownload(url, filename) {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  fetchAll();
+</script>
+
+</body>
+</html>
